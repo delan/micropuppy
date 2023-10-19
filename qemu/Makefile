@@ -1,11 +1,13 @@
 .POSIX:
 
+KERNEL =
+
 # https://krinkinmu.github.io/2020/11/21/EFI-aarch64.html#bonus-testing-in-qemu
 # http://www.redfelineninja.org.uk/daniel/2018/02/running-an-iso-installer-image-for-arm64-aarch64-using-qemu-and-kvm/
 
-run-kernel: ../kernel/target/aarch64-unknown-none/debug/kernel
+run-kernel: $(KERNEL)
 	qemu-system-aarch64 -M virt-8.0 -cpu cortex-a53 -m 4096 \
-		-kernel ../kernel/target/aarch64-unknown-none/debug/kernel -nographic
+		-kernel $(KERNEL) -nographic
 	@echo
 
 run-uefi: QEMU_EFI.img vars.qcow2
