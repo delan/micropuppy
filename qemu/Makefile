@@ -3,7 +3,11 @@
 # https://krinkinmu.github.io/2020/11/21/EFI-aarch64.html#bonus-testing-in-qemu
 # http://www.redfelineninja.org.uk/daniel/2018/02/running-an-iso-installer-image-for-arm64-aarch64-using-qemu-and-kvm/
 
-run: QEMU_EFI.img vars.qcow2
+run-kernel: ../kernel/target/aarch64-unknown-none/debug/kernel
+	qemu-system-aarch64 -M virt-8.0 -cpu cortex-a53 -m 4096 \
+		-kernel ../kernel/target/aarch64-unknown-none/debug/kernel -nographic
+
+run-uefi: QEMU_EFI.img vars.qcow2
 	qemu-system-aarch64 -M virt-8.0 -cpu cortex-a53 -m 4096 \
 		-drive if=pflash,format=raw,file=QEMU_EFI.img \
 		-drive if=pflash,file=vars.qcow2 \
