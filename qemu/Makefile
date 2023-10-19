@@ -6,6 +6,7 @@
 run-kernel: ../kernel/target/aarch64-unknown-none/debug/kernel
 	qemu-system-aarch64 -M virt-8.0 -cpu cortex-a53 -m 4096 \
 		-kernel ../kernel/target/aarch64-unknown-none/debug/kernel -nographic
+	@echo
 
 run-uefi: QEMU_EFI.img vars.qcow2
 	qemu-system-aarch64 -M virt-8.0 -cpu cortex-a53 -m 4096 \
@@ -22,4 +23,4 @@ QEMU_EFI.img.gz:
 vars.qcow2:
 	qemu-img create -f qcow2 vars.qcow2 64M
 
-.PHONY: run
+.PHONY: run-kernel run-uefi
