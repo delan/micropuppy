@@ -6,7 +6,7 @@
     "linker": "rust-lld",
     "linker-flavor": "ld.lld",
     "pre-link-args": {
-        "ld.lld": ["-Tsrc/linker.ld"]
+        "ld.lld": ["--orphan-handling=error", "-Tsrc/linker.ld"]
     },
     "llvm-target": "aarch64-unknown-none",
     "max-atomic-width": 128,
