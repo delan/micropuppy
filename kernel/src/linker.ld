@@ -1,7 +1,8 @@
 ENTRY(_start)
 SECTIONS
 {
-    . = 0x40080000;
+    /* 4MiB from the start of RAM - space required at start of RAM for FDT */
+    . = 0x40400000;
     .text.startup : { *(.text.startup) }
     .text : { *(.text*) }
     .data : { *(.data*) }
