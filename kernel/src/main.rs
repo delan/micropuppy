@@ -2,14 +2,12 @@
 #![no_main]
 #![deny(clippy::undocumented_unsafe_blocks)]
 
-use core::arch::global_asm;
-use core::convert::Infallible;
-use core::panic::PanicInfo;
-use core::ptr;
+mod logging;
 
-use fdt::standard_nodes::MemoryRegion;
-use ufmt::uwriteln;
-use ufmt_write::uWrite;
+use core::arch::global_asm;
+use core::panic::PanicInfo;
+
+use crate::logging::Pl011Writer;
 
 global_asm!(include_str!("start.s"));
 
@@ -33,28 +31,12 @@ pub extern "C" fn kernel_main() {
 
     let uart0 = fdt.find_compatible(&["arm,pl011"]).unwrap();
     let uart0 = uart0.reg().unwrap().next().unwrap();
-    let mut uart0 = Pl011Writer::new(&uart0);
+    let uart0 = Pl011Writer::new(uart0.starting_address);
+    logging::init(uart0, log::LevelFilter::Trace);
 
-    uwriteln!(uart0, "woof!!!! wraaaooo!!").unwrap();
-}
-
-struct Pl011Writer(*mut u8);
-
-impl Pl011Writer {
-    fn new(uart: &MemoryRegion) -> Self {
-        // UARTDR is at starting address
-        Self(uart.starting_address as *mut u8)
-    }
-}
-
-impl uWrite for Pl011Writer {
-    type Error = Infallible;
-
-    fn write_str(&mut self, value: &str) -> Result<(), Self::Error> {
-        for byte in value.bytes() {
-            unsafe { ptr::write_volatile(self.0, byte) }
-        }
-
-        Ok(())
-    }
+    log::error!("error woof");
+    log::warn!("warn woof");
+    log::info!("info woof");
+    log::debug!("debug woof");
+    log::trace!("trace woof");
 }
