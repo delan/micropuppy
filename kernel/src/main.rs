@@ -15,18 +15,40 @@ global_asm!(include_str!("start.s"));
 
 #[panic_handler]
 fn on_panic(info: &PanicInfo) -> ! {
-    if let Some(writer) = unsafe { &mut logging::WRITER } {
-        let _ = write!(writer, "💣 💥 🐶 panicked");
-        if let Some(location) = info.location() {
-            let _ = write!(writer, " at {}", location);
-        }
-        if let Some(message) = info.message() {
-            let _ = write!(writer, ":\n{message}");
-        } else if let Some(payload) = info.payload().downcast_ref::<&'static str>() {
-            let _ = write!(writer, ":\n{payload}");
-        }
-        let _ = write!(writer, "\n");
+    // We've already panicked, so this is our last ditch effort to communicate to the user any
+    // relevant information that could be used to debug the issue. As such, if writing fails, we
+    // can't do much about it.
+    trait ResultExt {
+        fn ignore(self);
     }
+
+    impl<T, E> ResultExt for Result<T, E> {
+        fn ignore(self) {
+            // do nothing
+        }
+    }
+
+    const RED_BOLD: &str = "\x1b[31m\x1b[1m";
+    const BRIGHT_BLACK: &str = "\x1b[38;5;240m";
+    const SGR0: &str = "\x1b[0m";
+
+    if let Some(writer) = unsafe { &mut logging::WRITER } {
+        write!(writer, "\n\n💣 💥 🐶 {RED_BOLD}panicked{SGR0} 🐶 💥 💣").ignore();
+        if let Some(location) = info.location() {
+            write!(writer, " {BRIGHT_BLACK}at {location}{SGR0}").ignore();
+        }
+        writeln!(writer).ignore();
+
+        if let Some(message) = info.message() {
+            write!(writer, "{message}").ignore();
+        } else if let Some(payload) = info.payload().downcast_ref::<&'static str>() {
+            write!(writer, "{payload}").ignore();
+        } else {
+            write!(writer, "<no message>").ignore();
+        }
+        write!(writer, "\n\n").ignore();
+    }
+
     loop {}
 }
 
