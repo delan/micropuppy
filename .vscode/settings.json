@@ -1,4 +1,4 @@
 {
   "rust-analyzer.check.allTargets": false,
-  "rust-analyzer.cargo.target": "./aarch64-unknown-none.json",
+  "rust-analyzer.cargo.target": "./kernel/aarch64-unknown-none.json",
 }
