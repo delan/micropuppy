@@ -1,10 +1,12 @@
 #![no_std]
 #![no_main]
+#![feature(panic_info_message)]
 #![deny(clippy::undocumented_unsafe_blocks)]
 
 mod logging;
 
 use core::arch::global_asm;
+use core::fmt::Write;
 use core::panic::PanicInfo;
 
 use crate::logging::Pl011Writer;
@@ -12,7 +14,19 @@ use crate::logging::Pl011Writer;
 global_asm!(include_str!("start.s"));
 
 #[panic_handler]
-fn on_panic(_info: &PanicInfo) -> ! {
+fn on_panic(info: &PanicInfo) -> ! {
+    if let Some(writer) = unsafe { &mut logging::WRITER } {
+        let _ = write!(writer, "💣 💥 🐶 panicked");
+        if let Some(location) = info.location() {
+            let _ = write!(writer, " at {}", location);
+        }
+        if let Some(message) = info.message() {
+            let _ = write!(writer, ":\n{message}");
+        } else if let Some(payload) = info.payload().downcast_ref::<&'static str>() {
+            let _ = write!(writer, ":\n{payload}");
+        }
+        let _ = write!(writer, "\n");
+    }
     loop {}
 }
 

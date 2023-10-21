@@ -42,7 +42,7 @@ impl log::Log for Logger {
     fn flush(&self) {}
 }
 
-static mut WRITER: Option<Pl011Writer> = None;
+pub static mut WRITER: Option<Pl011Writer> = None;
 
 pub struct Pl011Writer(*mut pl011::RegisterBlock);
 
