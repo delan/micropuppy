@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="utf-8"?>
+<device schemaVersion="1.3" xmlns:xs="http://www.w3.org/2001/XMLSchema-instance"
+    xs:noNamespaceSchemaLocation="CMSIS-SVD.xsd">
+    <name>Arm Cortex-A53</name>
+    <version>1.0</version>
+    <description></description>
+    <addressUnitBits>8</addressUnitBits>
+    <width>64</width>
+    <peripherals>
+        <peripheral>
+            <name>PL011</name>
+            <baseAddress>0x00000000</baseAddress>
+            <addressBlock>
+                <offset>0x0</offset>
+                <size>0x1000</size>
+                <usage>registers</usage>
+            </addressBlock>
+            <registers>
+                <register>
+                    <name>UARTDR</name>
+                    <description>Data Register</description>
+                    <size>32</size>
+                    <addressOffset>0x0</addressOffset>
+                    <fields>
+                        <field>
+                            <name>DATA</name>
+                            <msb>7</msb>
+                            <lsb>0</lsb>
+                        </field>
+                        <field>
+                            <name>FE</name>
+                            <msb>8</msb>
+                            <lsb>8</lsb>
+                        </field>
+                        <field>
+                            <name>PE</name>
+                            <msb>9</msb>
+                            <lsb>9</lsb>
+                        </field>
+                        <field>
+                            <name>BE</name>
+                            <msb>10</msb>
+                            <lsb>10</lsb>
+                        </field>
+                        <field>
+                            <name>OE</name>
+                            <msb>11</msb>
+                            <lsb>11</lsb>
+                        </field>
+                    </fields>
+                </register>
+            </registers>
+        </peripheral>
+    </peripherals>
+</device>

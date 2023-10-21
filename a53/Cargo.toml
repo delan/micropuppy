@@ -1,12 +1,9 @@
 [package]
-name = "kernel"
+name = "a53"
 version = "0.1.0"
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-a53 = { path = "../a53" }
-fdt = "0.1.5"
-ufmt = "0.2.0"
-ufmt-write = "0.1.0"
+vcell = "0.1.3"
