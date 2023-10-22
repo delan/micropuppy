@@ -1,9 +1,9 @@
 .POSIX:
 
-CARGO_PROFILE_FLAG =
+CARGOFLAGS =
 
-kernel:
-	cargo build -Zbuild-std --target aarch64-unknown-none.json $(CARGO_PROFILE_FLAG)
+build:
+	cargo build -Zbuild-std --target aarch64-unknown-none.json $(CARGOFLAGS)
 
 clean:
 	cargo clean

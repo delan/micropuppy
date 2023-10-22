@@ -4,3 +4,6 @@ members = [
     "a53",
     "kernel"
 ]
+exclude = [
+    "runner"
+]

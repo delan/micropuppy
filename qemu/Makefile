@@ -6,7 +6,7 @@ KERNEL =
 # https://krinkinmu.github.io/2020/11/21/EFI-aarch64.html#bonus-testing-in-qemu
 # http://www.redfelineninja.org.uk/daniel/2018/02/running-an-iso-installer-image-for-arm64-aarch64-using-qemu-and-kvm/
 
-run-kernel: $(KERNEL)
+run-kernel:
 	qemu-system-aarch64 $(QEMUFLAGS) \
 		-M virt -cpu cortex-a53 -m 4096 -nographic \
 		-kernel $(KERNEL)

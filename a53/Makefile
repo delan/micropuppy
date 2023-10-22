@@ -1,5 +1,10 @@
 .POSIX:
 
+build: src/
+
+clean:
+	rm -rf src/
+
 src/: a53.svd
 	@# Generate lib.rs from the SVD
 	svd2rust --target none -i $?
@@ -10,7 +15,4 @@ src/: a53.svd
 	@# lib.rs and the form output are unformatted - clean them up
 	cargo fmt
 
-clean:
-	rm -rf src/
-
-.PHONY: clean
+.PHONY: build clean
