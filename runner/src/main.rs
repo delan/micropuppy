@@ -1,7 +1,7 @@
 #![feature(exit_status_error)]
 
-mod actions;
 mod command;
+mod runner;
 
 use std::env::{self, VarError};
 use std::path::{Path, PathBuf};
@@ -10,7 +10,7 @@ use clap::{Args, Parser, Subcommand};
 use color_eyre::eyre::{bail, Context};
 use color_eyre::Result;
 
-use crate::actions::Actions;
+use crate::runner::Runner;
 
 #[derive(Parser, Debug)]
 struct RunnerArgs {
@@ -139,12 +139,12 @@ fn main() -> Result<()> {
         .join(target.cargo_profile_dir())
         .join("kernel");
 
-    let actions = Actions::new(binaries);
+    let runner = Runner::new(binaries);
 
     let build = || -> Result<()> {
-        actions.step("build");
-        actions.invoke(command::make("build").directory("a53/"))?;
-        actions.invoke(
+        runner.step("build");
+        runner.invoke(command::make("build").directory("a53/"))?;
+        runner.invoke(
             command::make("build")
                 .directory("kernel/")
                 .variable("CARGOFLAGS", target.cargo_profile_flag()),
@@ -154,9 +154,9 @@ fn main() -> Result<()> {
     };
 
     let clean = || -> Result<()> {
-        actions.step("clean");
-        actions.invoke(command::make("clean").directory("a53/"))?;
-        actions.invoke(command::make("clean").directory("kernel/"))?;
+        runner.step("clean");
+        runner.invoke(command::make("clean").directory("a53/"))?;
+        runner.invoke(command::make("clean").directory("kernel/"))?;
 
         Ok(())
     };
@@ -165,8 +165,8 @@ fn main() -> Result<()> {
         let qemuflags = if debugger { "-S -s" } else { "" };
         let kernel = Path::new("..").join(&kernel);
 
-        actions.step("qemu");
-        actions.invoke(
+        runner.step("qemu");
+        runner.invoke(
             command::make("run-kernel")
                 .directory("qemu/")
                 .variable("QEMUFLAGS", qemuflags)
@@ -177,8 +177,8 @@ fn main() -> Result<()> {
     };
 
     let gdb = || -> Result<()> {
-        actions.step("gdb");
-        actions.invoke(
+        runner.step("gdb");
+        runner.invoke(
             command::gdb(kernel.to_str().unwrap())
                 .arg("-ex")
                 .arg("target remote localhost:1234"),
@@ -194,6 +194,6 @@ fn main() -> Result<()> {
         RunnerCommand::Gdb => gdb(),
     }?;
 
-    actions.done();
+    runner.done();
     Ok(())
 }

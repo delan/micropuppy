@@ -8,11 +8,11 @@ use owo_colors::OwoColorize;
 
 use crate::Binaries;
 
-pub struct Actions {
+pub struct Runner {
     binaries: Binaries,
 }
 
-impl Actions {
+impl Runner {
     pub fn new(binaries: Binaries) -> Self {
         Self { binaries }
     }

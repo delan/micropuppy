@@ -2,7 +2,7 @@ use std::process::Command;
 
 use color_eyre::Result;
 
-use crate::actions::IntoCommand;
+use crate::runner::IntoCommand;
 use crate::Binaries;
 
 pub struct Make {
