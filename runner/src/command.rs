@@ -2,7 +2,8 @@ use std::process::Command;
 
 use color_eyre::Result;
 
-use crate::action::IntoCommand;
+use crate::actions::IntoCommand;
+use crate::Binaries;
 
 pub struct Make {
     target: String,
@@ -11,7 +12,7 @@ pub struct Make {
 }
 
 impl IntoCommand for &mut Make {
-    fn into_command(self) -> Result<Command> {
+    fn into_command(self, _binaries: &Binaries) -> Result<Command> {
         // We're forced away from the full builder syntax because we need to return the owned
         // Command, not the &mut Command that the builder methods return.
         let mut command = Command::new("make");
@@ -55,10 +56,10 @@ pub struct Gdb {
 }
 
 impl IntoCommand for &mut Gdb {
-    fn into_command(self) -> Result<Command> {
+    fn into_command(self, binaries: &Binaries) -> Result<Command> {
         // We're forced away from the full builder syntax because we need to return the owned
         // Command, not the &mut Command that the builder methods return.
-        let mut command = Command::new("gdb");
+        let mut command = Command::new(&binaries.gdb);
         command.args(&self.args).arg(&self.binary);
 
         Ok(command)

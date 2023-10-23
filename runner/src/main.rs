@@ -1,23 +1,28 @@
 #![feature(exit_status_error)]
 
-mod action;
+mod actions;
 mod command;
 
-use std::path::Path;
+use std::env::{self, VarError};
+use std::path::{Path, PathBuf};
 
-use clap::Parser;
-use color_eyre::eyre::bail;
+use clap::{Args, Parser, Subcommand};
+use color_eyre::eyre::{bail, Context};
 use color_eyre::Result;
 
+use crate::actions::Actions;
+
 #[derive(Parser, Debug)]
-struct Args {
+struct RunnerArgs {
     #[command(subcommand)]
     command: RunnerCommand,
     #[command(flatten)]
     target: TargetArgs,
+    #[command(flatten)]
+    binaries: BinaryArgs,
 }
 
-#[derive(Parser, Debug)]
+#[derive(Subcommand, Debug)]
 enum RunnerCommand {
     /// Build the kernel binary.
     Build,
@@ -56,7 +61,8 @@ impl Target {
     }
 }
 
-#[derive(Parser, Debug)]
+#[derive(Args, Debug)]
+#[command(next_help_heading = "Target")]
 struct TargetArgs {
     /// Use a debug build (default).
     #[arg(long, global = true)]
@@ -70,6 +76,7 @@ impl TargetArgs {
     fn as_target(&self) -> Result<Target> {
         let Self { debug, release } = *self;
         if debug && release {
+            // TODO: encode this through clap
             bail!("can't specify both debug and release as target");
         } else if release {
             Ok(Target::Release)
@@ -80,19 +87,64 @@ impl TargetArgs {
     }
 }
 
+#[derive(Args, Debug)]
+#[command(next_help_heading = "Binaries")]
+struct BinaryArgs {
+    /// Path to a GDB which supports aarch64. [default: $GDB, otherwise `gdb`]
+    #[arg(long, global = true)]
+    gdb: Option<PathBuf>,
+}
+
+impl BinaryArgs {
+    fn resolve(
+        arg: Option<PathBuf>,
+        name: &str,
+        default_path: impl Into<PathBuf>,
+    ) -> Result<PathBuf> {
+        if let Some(path) = arg {
+            Ok(path)
+        } else {
+            match env::var(name) {
+                Ok(path) => Ok(PathBuf::from(path)),
+                Err(VarError::NotPresent) => Ok(default_path.into()),
+                Err(err) => Err(err)
+                    .wrap_err_with(|| format!("failed to read environment varaible ${name}")),
+            }
+        }
+    }
+
+    fn into_binaries(self) -> Result<Binaries> {
+        Ok(Binaries {
+            gdb: Self::resolve(self.gdb, "GDB", "gdb")?,
+        })
+    }
+}
+
+#[derive(Debug)]
+struct Binaries {
+    gdb: PathBuf,
+}
+
 fn main() -> Result<()> {
     color_eyre::install()?;
+    let RunnerArgs {
+        command,
+        target,
+        binaries,
+    } = RunnerArgs::parse();
 
-    let Args { target, command } = Args::parse();
     let target = target.as_target()?;
+    let binaries = binaries.into_binaries()?;
     let kernel = Path::new("target/aarch64-unknown-none")
         .join(target.cargo_profile_dir())
         .join("kernel");
 
+    let actions = Actions::new(binaries);
+
     let build = || -> Result<()> {
-        action::step("build");
-        action::invoke(command::make("build").directory("a53/"))?;
-        action::invoke(
+        actions.step("build");
+        actions.invoke(command::make("build").directory("a53/"))?;
+        actions.invoke(
             command::make("build")
                 .directory("kernel/")
                 .variable("CARGOFLAGS", target.cargo_profile_flag()),
@@ -102,9 +154,9 @@ fn main() -> Result<()> {
     };
 
     let clean = || -> Result<()> {
-        action::step("clean");
-        action::invoke(command::make("clean").directory("a53/"))?;
-        action::invoke(command::make("clean").directory("kernel/"))?;
+        actions.step("clean");
+        actions.invoke(command::make("clean").directory("a53/"))?;
+        actions.invoke(command::make("clean").directory("kernel/"))?;
 
         Ok(())
     };
@@ -113,8 +165,8 @@ fn main() -> Result<()> {
         let qemuflags = if debugger { "-S -s" } else { "" };
         let kernel = Path::new("..").join(&kernel);
 
-        action::step("qemu");
-        action::invoke(
+        actions.step("qemu");
+        actions.invoke(
             command::make("run-kernel")
                 .directory("qemu/")
                 .variable("QEMUFLAGS", qemuflags)
@@ -125,8 +177,8 @@ fn main() -> Result<()> {
     };
 
     let gdb = || -> Result<()> {
-        action::step("gdb");
-        action::invoke(
+        actions.step("gdb");
+        actions.invoke(
             command::gdb(kernel.to_str().unwrap())
                 .arg("-ex")
                 .arg("target remote localhost:1234"),
@@ -142,6 +194,6 @@ fn main() -> Result<()> {
         RunnerCommand::Gdb => gdb(),
     }?;
 
-    action::done();
+    actions.done();
     Ok(())
 }
