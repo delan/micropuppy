@@ -1,9 +1,9 @@
 #![feature(exit_status_error)]
 
 mod action;
+mod command;
 
 use std::path::Path;
-use std::process::Command;
 
 use color_eyre::eyre::bail;
 use color_eyre::Result;
@@ -91,12 +91,11 @@ fn main() -> Result<()> {
 
     let build = || -> Result<()> {
         action::step("build");
-        action::invoke(Command::new("make").arg("build").current_dir("a53/"))?;
+        action::invoke(command::make("build").directory("a53/"))?;
         action::invoke(
-            Command::new("make")
-                .arg("build")
-                .arg(format!("CARGOFLAGS={}", target.cargo_profile_flag()))
-                .current_dir("kernel/"),
+            command::make("build")
+                .directory("kernel/")
+                .variable("CARGOFLAGS", target.cargo_profile_flag()),
         )?;
 
         Ok(())
@@ -104,8 +103,8 @@ fn main() -> Result<()> {
 
     let clean = || -> Result<()> {
         action::step("clean");
-        action::invoke(Command::new("make").arg("clean").current_dir("a53/"))?;
-        action::invoke(Command::new("make").arg("clean").current_dir("kernel/"))?;
+        action::invoke(command::make("clean").directory("a53/"))?;
+        action::invoke(command::make("clean").directory("kernel/"))?;
 
         Ok(())
     };
@@ -116,11 +115,10 @@ fn main() -> Result<()> {
 
         action::step("qemu");
         action::invoke(
-            Command::new("make")
-                .arg("run-kernel")
-                .arg(format!("QEMUFLAGS={qemuflags}"))
-                .arg(format!("KERNEL={}", kernel.display()))
-                .current_dir("qemu/"),
+            command::make("run-kernel")
+                .directory("qemu/")
+                .variable("QEMUFLAGS", qemuflags)
+                .variable("KERNEL", kernel.to_str().unwrap()),
         )?;
 
         Ok(())
@@ -129,10 +127,9 @@ fn main() -> Result<()> {
     let gdb = || -> Result<()> {
         action::step("gdb");
         action::invoke(
-            Command::new("aarch64-linux-gnu-gdb")
+            command::gdb(kernel.to_str().unwrap())
                 .arg("-ex")
-                .arg("target remote localhost:1234")
-                .arg(format!("{}", kernel.display())),
+                .arg("target remote localhost:1234"),
         )?;
 
         Ok(())

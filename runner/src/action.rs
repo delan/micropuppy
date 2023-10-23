@@ -28,7 +28,13 @@ pub fn step(name: &str) {
     eprintln!("{}", format!("🧾 running step `{name}`").bold());
 }
 
-pub fn invoke(command: &mut Command) -> Result<()> {
+pub trait IntoCommand {
+    fn into_command(self) -> Result<Command>;
+}
+
+pub fn invoke(command: impl IntoCommand) -> Result<()> {
+    let mut command = command.into_command()?;
+
     let program = command.get_program();
     let args = command.get_args();
     let command_line = std::iter::once(program)
