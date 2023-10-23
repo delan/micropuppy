@@ -5,19 +5,19 @@ mod command;
 
 use std::path::Path;
 
+use clap::Parser;
 use color_eyre::eyre::bail;
 use color_eyre::Result;
-use structopt::StructOpt;
 
-#[derive(Debug, StructOpt)]
-struct Opt {
-    #[structopt(subcommand)]
+#[derive(Parser, Debug)]
+struct Args {
+    #[command(subcommand)]
     command: RunnerCommand,
-    #[structopt(flatten)]
-    target: TargetOpts,
+    #[command(flatten)]
+    target: TargetArgs,
 }
 
-#[derive(Debug, StructOpt)]
+#[derive(Parser, Debug)]
 enum RunnerCommand {
     /// Build the kernel binary.
     Build,
@@ -26,7 +26,7 @@ enum RunnerCommand {
     /// Build the kernel binary, then run the kernel in QEMU.
     Qemu {
         /// Should QEMU open a GDB server?
-        #[structopt(long, short)]
+        #[arg(long, short)]
         debugger: bool,
     },
     /// Run GDB, configured to attach to QEMU.
@@ -56,17 +56,17 @@ impl Target {
     }
 }
 
-#[derive(Debug, StructOpt)]
-struct TargetOpts {
+#[derive(Parser, Debug)]
+struct TargetArgs {
     /// Use a debug build (default).
-    #[structopt(long, global = true)]
+    #[arg(long, global = true)]
     debug: bool,
     /// Use a release build.
-    #[structopt(long, global = true)]
+    #[arg(long, global = true)]
     release: bool,
 }
 
-impl TargetOpts {
+impl TargetArgs {
     fn as_target(&self) -> Result<Target> {
         let Self { debug, release } = *self;
         if debug && release {
@@ -83,7 +83,7 @@ impl TargetOpts {
 fn main() -> Result<()> {
     color_eyre::install()?;
 
-    let Opt { target, command } = Opt::from_args();
+    let Args { target, command } = Args::parse();
     let target = target.as_target()?;
     let kernel = Path::new("target/aarch64-unknown-none")
         .join(target.cargo_profile_dir())
