@@ -26,6 +26,14 @@ macro_rules! read_special_reg {
         result
     }};
 }
+
+macro_rules! write_special_reg {
+    ($special:literal, $value:expr) => {{
+        unsafe {
+            asm!(concat!("msr ", $special, ", {}"), in(reg) $value);
+        }
+    }};
+}
     
 
 #[panic_handler]
@@ -109,16 +117,22 @@ pub extern "C" fn kernel_main() {
     log::debug!("CNTP_TVAL_EL0 = {:016X}h", read_special_reg!("CNTP_TVAL_EL0"));
     log::debug!("CNTP_CTL_EL0 = {:016X}h", read_special_reg!("CNTP_CTL_EL0"));
 
+    write_special_reg!("CNTP_CTL_EL0", 1u64); // enable interrupts
+    
+    log::debug!("CNTP_CTL_EL0 = {:016X}h", read_special_reg!("CNTP_CTL_EL0"));
+
     // unsafe { asm!("svc #0"); }
     // unsafe { asm!("svc #0"); }
     // unsafe { asm!("svc #0"); }
 
     // return;
     loop {
-        return;
+        // log::debug!("CNTP_CTL_EL0 = {:016X}h", read_special_reg!("CNTP_CTL_EL0"));
+
+        // return;
         // log::debug!("CNTP_CTL_EL0 = {:016X}h, CNTP_TVAL_EL0 = {:016X}h", read_special_reg!("CNTP_CTL_EL0"), read_special_reg!("CNTP_TVAL_EL0"));
-        let cntpct_el0 = read_special_reg!("CNTPCT_EL0");
-        log::debug!("{:016X}h ({})", cntpct_el0, cntpct_el0);
+        // let cntpct_el0 = read_special_reg!("CNTPCT_EL0");
+        // log::debug!("{:016X}h ({})", cntpct_el0, cntpct_el0);
         // let cntvct_el0 = read_special_reg!("CNTVCT_EL0");
         // log::debug!("{:016X}h ({})", cntvct_el0, cntvct_el0);
         // break;
