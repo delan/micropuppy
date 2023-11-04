@@ -8,6 +8,7 @@ mod logging;
 use core::arch::{asm, global_asm};
 use core::fmt::Write;
 use core::panic::PanicInfo;
+use core::ptr;
 
 use crate::logging::Pl011Writer;
 
@@ -34,7 +35,6 @@ macro_rules! write_special_reg {
         }
     }};
 }
-    
 
 #[panic_handler]
 fn on_panic(info: &PanicInfo) -> ! {
@@ -101,40 +101,143 @@ pub extern "C" fn kernel_main() {
 
     log::debug!("woof!!!! wraaaooo!!");
 
-    log::debug!("EL = {:X}h", read_special_reg!("CurrentEL") >> 2);
+    // enable timer interrupts
+    write_special_reg!("CNTP_CTL_EL0", 1u64);
 
-    log::debug!("VBAR_EL1 = {:016X}h", read_special_reg!("VBAR_EL1"));
-    unsafe { asm!("msr VBAR_EL1, {}", in(reg) vectors); }
-    log::debug!("VBAR_EL1 = {:016X}h", read_special_reg!("VBAR_EL1"));
+    let gicd = 0x8000000 as *mut u32;
+    let gicd_ctlr = unsafe { gicd.add(0) };
+    let gicd_isenabler = |n: usize| unsafe { gicd.add(64 + n) };
+    // let gicd_itargetsr = |n: usize| unsafe { gicd.add(512 + n) };
 
-    log::debug!("DAIF = {:X}h", read_special_reg!("DAIF") >> 6);
-    let daif = 0u64;
-    unsafe { asm!("msr DAIF, {}", in(reg) daif); }
-    log::debug!("DAIF = {:X}h", read_special_reg!("DAIF") >> 6);
-
-    log::debug!("CNTKCTL_EL1 = {:016X}h", read_special_reg!("CNTKCTL_EL1"));
-    log::debug!("CNTV_CTL_EL0 = {:016X}h", read_special_reg!("CNTV_CTL_EL0"));
-    log::debug!("CNTP_TVAL_EL0 = {:016X}h", read_special_reg!("CNTP_TVAL_EL0"));
-    log::debug!("CNTP_CTL_EL0 = {:016X}h", read_special_reg!("CNTP_CTL_EL0"));
-
-    write_special_reg!("CNTP_CTL_EL0", 1u64); // enable interrupts
-    
-    log::debug!("CNTP_CTL_EL0 = {:016X}h", read_special_reg!("CNTP_CTL_EL0"));
-
-    // unsafe { asm!("svc #0"); }
-    // unsafe { asm!("svc #0"); }
-    // unsafe { asm!("svc #0"); }
-
-    // return;
-    loop {
-        // log::debug!("CNTP_CTL_EL0 = {:016X}h", read_special_reg!("CNTP_CTL_EL0"));
-
-        // return;
-        // log::debug!("CNTP_CTL_EL0 = {:016X}h, CNTP_TVAL_EL0 = {:016X}h", read_special_reg!("CNTP_CTL_EL0"), read_special_reg!("CNTP_TVAL_EL0"));
-        // let cntpct_el0 = read_special_reg!("CNTPCT_EL0");
-        // log::debug!("{:016X}h ({})", cntpct_el0, cntpct_el0);
-        // let cntvct_el0 = read_special_reg!("CNTVCT_EL0");
-        // log::debug!("{:016X}h ({})", cntvct_el0, cntvct_el0);
-        // break;
+    unsafe {
+        // enable group 0 interrupts
+        ptr::write_volatile(gicd_ctlr, 1);
+        // enable 0xd ppi = 0x1d interrupt
+        ptr::write_volatile(gicd_isenabler(0x1e / 32), 1 << (0x1e % 32));
+        // make core 0 the target
+        // ptr::write_volatile(gicd_itargetsr(0x1e / 4), 0x01 << (0x1e % 4));
     }
+    
+    let gicc = 0x8010000 as *mut u32;
+    let gicc_ctlr = unsafe { gicc.add(0) };
+    let gicc_pmr = unsafe { gicc.add(1) };
+    let gicc_bpr = unsafe { gicc.add(2) };
+
+    unsafe {
+        // enable group 0 interrupts
+        ptr::write_volatile(gicc_ctlr, 1);
+        // configure priority
+        ptr::write_volatile(gicc_pmr, 0xff);
+        // ptr::write_volatile(gicc_bpr, 0);
+    }
+
+    unsafe {
+        // set up vector table base address
+        asm!("msr VBAR_EL1, {}", in(reg) vectors);
+        // unmask all interrupts
+        asm!("msr DAIF, {:x}", in(reg) 0);
+    }
+
+    log::debug!("CNTP_CTL_EL0 = {:016X}h", read_special_reg!("CNTP_CTL_EL0"));
+
+    loop {}
+
+    // log::debug!("EL = {:X}h", read_special_reg!("CurrentEL") >> 2);
+
+    // log::debug!("VBAR_EL1 = {:016X}h", read_special_reg!("VBAR_EL1"));
+    // unsafe {
+    //     asm!("msr VBAR_EL1, {}", in(reg) vectors);
+    // }
+    // log::debug!("VBAR_EL1 = {:016X}h", read_special_reg!("VBAR_EL1"));
+
+    // log::debug!("DAIF = {:X}h", read_special_reg!("DAIF") >> 6);
+    // let daif = 0u64;
+    // unsafe {
+    //     asm!("msr DAIF, {}", in(reg) daif);
+    // }
+    // log::debug!("DAIF = {:X}h", read_special_reg!("DAIF") >> 6);
+
+    // log::debug!("CNTKCTL_EL1 = {:016X}h", read_special_reg!("CNTKCTL_EL1"));
+    // log::debug!("CNTV_CTL_EL0 = {:016X}h", read_special_reg!("CNTV_CTL_EL0"));
+    // log::debug!(
+    //     "CNTP_TVAL_EL0 = {:016X}h",
+    //     read_special_reg!("CNTP_TVAL_EL0")
+    // );
+    // log::debug!("CNTP_CTL_EL0 = {:016X}h", read_special_reg!("CNTP_CTL_EL0"));
+
+    // let gicc_ctlr = 0x8010000 as *mut u32;
+    // unsafe {
+    //     ptr::write_volatile(gicc_ctlr, 1);
+    // }
+
+    // let gicd_ctlr = 0x8000000 as *mut u32;
+    // unsafe {
+    //     ptr::write_volatile(gicd_ctlr, 1);
+    // }
+
+    // let gicc_pmr = 0x8000004 as *mut u32;
+    // unsafe {
+    //     ptr::write_volatile(gicc_pmr, 0xff);
+    // }
+
+    // let gicc_bpr = 0x8000008 as *mut u32;
+    // unsafe {
+    //     ptr::write_volatile(gicc_bpr, 0);
+    // }
+
+    // let gicd_itargetsr6 = (0x8000000 + 0x800 + 6 * 0x4) as *mut u32;
+    // let gicd_itargetsr7 = (0x8000000 + 0x800 + 7 * 0x4) as *mut u32;
+    // unsafe {
+    //     ptr::write_volatile(gicd_itargetsr7, 1 << 8);
+    //     ptr::write_volatile(gicd_itargetsr7, 1 << 16);
+    //     ptr::write_volatile(gicd_itargetsr6, 1 << 16);
+    //     ptr::write_volatile(gicd_itargetsr6, 1 << 24);
+    // }
+
+    // for i in 0..16 {
+    //     unsafe {
+    //         ptr::write_volatile((0x8000000 + 0x800 + i* 4) as *mut u32, 0x01010101);
+    //     }
+    // }
+
+    // for i in 0..16 {
+    //     unsafe {
+    //         ptr::write_volatile((0x8000100 + i* 4) as *mut u32, 0xffffffff);
+    //     }
+    // }
+
+    // let gicd_isenabler0 = 0x8000100 as *mut u32;
+    // unsafe {
+    //     ptr::write_volatile(gicd_isenabler0, 1 << (16 + 0xd));
+    //     ptr::write_volatile(gicd_isenabler0, 1 << (16 + 0xe));
+    //     ptr::write_volatile(gicd_isenabler0, 1 << (16 + 0xb));
+    //     ptr::write_volatile(gicd_isenabler0, 1 << (16 + 0xa));
+    // }
+
+    // log::debug!("CNTP_CTL_EL0 = {:016X}h", read_special_reg!("CNTP_CTL_EL0"));
+
+    // // enable timer interrupts
+    // write_special_reg!("CNTP_CTL_EL0", 1u64);
+    
+
+    // log::debug!("CNTP_CTL_EL0 = {:016X}h", read_special_reg!("CNTP_CTL_EL0"));
+
+    // log::debug!("CNTFRQ_EL0 = {:016X}h", read_special_reg!("CNTFRQ_EL0"));
+
+    // // unsafe { asm!("svc #0"); }
+    // // unsafe { asm!("svc #0"); }
+    // // unsafe { asm!("svc #0"); }
+
+    // // return;
+    // loop {
+    //     // log::debug!("CNTP_CTL_EL0 = {:016X}h", read_special_reg!("CNTP_CTL_EL0"));
+
+    //     // return;
+    //     // log::debug!("CNTP_CTL_EL0 = {:016X}h, CNTP_TVAL_EL0 = {:016X}h", read_special_reg!("CNTP_CTL_EL0"), read_special_reg!("CNTP_TVAL_EL0"));
+    //     // let cntpct_el0 = read_special_reg!("CNTPCT_EL0");
+    //     // log::debug!("{:016X}h ({})", cntpct_el0, cntpct_el0);
+    //     // let cntvct_el0 = read_special_reg!("CNTVCT_EL0");
+    //     // log::debug!("{:016X}h ({})", cntvct_el0, cntvct_el0);
+    //     // break;
+    // }
 }
