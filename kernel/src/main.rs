@@ -5,13 +5,28 @@
 
 mod logging;
 
-use core::arch::global_asm;
+use core::arch::{asm, global_asm};
 use core::fmt::Write;
 use core::panic::PanicInfo;
 
 use crate::logging::Pl011Writer;
 
 global_asm!(include_str!("start.s"));
+global_asm!(include_str!("vectors.s"));
+extern "C" {
+    fn vectors();
+}
+
+macro_rules! read_special_reg {
+    ($special:literal) => {{
+        let result: u64;
+        unsafe {
+            asm!(concat!("mrs {}, ", $special), out(reg) result);
+        }
+        result
+    }};
+}
+    
 
 #[panic_handler]
 fn on_panic(info: &PanicInfo) -> ! {
@@ -75,4 +90,37 @@ pub extern "C" fn kernel_main() {
     log::info!("info woof");
     log::debug!("debug woof");
     log::trace!("trace woof");
+
+    log::debug!("woof!!!! wraaaooo!!");
+
+    log::debug!("EL = {:X}h", read_special_reg!("CurrentEL") >> 2);
+
+    log::debug!("VBAR_EL1 = {:016X}h", read_special_reg!("VBAR_EL1"));
+    unsafe { asm!("msr VBAR_EL1, {}", in(reg) vectors); }
+    log::debug!("VBAR_EL1 = {:016X}h", read_special_reg!("VBAR_EL1"));
+
+    log::debug!("DAIF = {:X}h", read_special_reg!("DAIF") >> 6);
+    let daif = 0u64;
+    unsafe { asm!("msr DAIF, {}", in(reg) daif); }
+    log::debug!("DAIF = {:X}h", read_special_reg!("DAIF") >> 6);
+
+    log::debug!("CNTKCTL_EL1 = {:016X}h", read_special_reg!("CNTKCTL_EL1"));
+    log::debug!("CNTV_CTL_EL0 = {:016X}h", read_special_reg!("CNTV_CTL_EL0"));
+    log::debug!("CNTP_TVAL_EL0 = {:016X}h", read_special_reg!("CNTP_TVAL_EL0"));
+    log::debug!("CNTP_CTL_EL0 = {:016X}h", read_special_reg!("CNTP_CTL_EL0"));
+
+    // unsafe { asm!("svc #0"); }
+    // unsafe { asm!("svc #0"); }
+    // unsafe { asm!("svc #0"); }
+
+    // return;
+    loop {
+        return;
+        // log::debug!("CNTP_CTL_EL0 = {:016X}h, CNTP_TVAL_EL0 = {:016X}h", read_special_reg!("CNTP_CTL_EL0"), read_special_reg!("CNTP_TVAL_EL0"));
+        let cntpct_el0 = read_special_reg!("CNTPCT_EL0");
+        log::debug!("{:016X}h ({})", cntpct_el0, cntpct_el0);
+        // let cntvct_el0 = read_special_reg!("CNTVCT_EL0");
+        // log::debug!("{:016X}h ({})", cntvct_el0, cntvct_el0);
+        // break;
+    }
 }

@@ -3,6 +3,11 @@ SECTIONS
 {
     /* 4MiB from the start of RAM - space required at start of RAM for FDT */
     . = 0x40400000;
+
+    /* VBAR_EL1 is 16 vectors of 0x80 bytes */
+    . = ALIGN(0x800);
+    .text.vectors : { *(.text.vectors) }
+
     .text.startup : { *(.text.startup) }
     .text : { *(.text*) }
     .data : { *(.data*) }
