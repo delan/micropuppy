@@ -19,6 +19,14 @@ extern "C" {
     fn vectors();
 }
 
+macro_rules! dbg {
+    ($value:expr) => {{
+        let value = $value;
+        log::debug!("{:?}", value);
+        value
+    }};
+}
+
 macro_rules! read_special_reg {
     ($special:literal) => {{
         let result: u64;
@@ -106,15 +114,17 @@ pub extern "C" fn kernel_main() {
     write_special_reg!("CNTP_CTL_EL0", 1u64);
 
     let timer = fdt.find_compatible(&["arm,armv8-timer"]).unwrap();
-    // TODO this panics? also document this
-    // https://github.com/torvalds/linux/blob/90b0c2b2edd1adff742c621e246562fbefa11b70/Documentation/devicetree/bindings/timer/arm%2Carch_timer.yaml#L44-L58
-    // let timer_ppi = timer.interrupts().unwrap().next().unwrap();
+    let timer_interrupts = timer.property("interrupts").unwrap().value;
+    let mut timer_interrupts = gicv2::InterruptSpecifier::interrupts_iter(timer_interrupts);
 
     let gic = fdt.find_compatible(&["arm,cortex-a15-gic"]).unwrap();
     let mut gic = gic.reg().unwrap();
     let mut gicd = gicv2::Distributor::new(gic.next().unwrap().starting_address);
     gicd.enable();
-    gicd.enable_ppi(PpiNumber(0xe));
+
+    // TODO document this, is it the virt or the non-secure phys?
+    // https://github.com/torvalds/linux/blob/90b0c2b2edd1adff742c621e246562fbefa11b70/Documentation/devicetree/bindings/timer/arm%2Carch_timer.yaml#L44-L58
+    gicd.enable_interrupt(timer_interrupts.nth(1).unwrap().interrupt_id());
 
     let mut gicc = gicv2::CpuInterface::new(gic.next().unwrap().starting_address);
     gicc.enable();
