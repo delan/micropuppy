@@ -42,6 +42,25 @@ impl CpuInterface {
     pub fn new(base_address: *const u8) -> Self {
         Self(base_address as *mut u32)
     }
+
+    pub fn enable(&mut self) {
+        unsafe {
+            // enable group 0 interrupts
+            // all other bits zero in IHI 0048B.b, Figure 4-24
+            ptr::write_volatile(self.ctlr(), 1);
+
+            // set priority threshold to most lenient
+            ptr::write_volatile(self.pmr(), 0xff);
+        }
+    }
+
+    unsafe fn ctlr(&self) -> *mut u32 {
+        self.0.add(0)
+    }
+
+    unsafe fn pmr(&self) -> *mut u32 {
+        self.0.add(1)
+    }
 }
 
 impl From<PpiNumber> for InterruptId {

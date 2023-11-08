@@ -9,7 +9,6 @@ mod logging;
 use core::arch::{asm, global_asm};
 use core::fmt::Write;
 use core::panic::PanicInfo;
-use core::ptr;
 
 use crate::gicv2::PpiNumber;
 use crate::logging::Pl011Writer;
@@ -117,18 +116,8 @@ pub extern "C" fn kernel_main() {
     gicd.enable();
     gicd.enable_ppi(PpiNumber(0xe));
 
-    let gicc = 0x8010000 as *mut u32;
-    let gicc_ctlr = unsafe { gicc.add(0) };
-    let gicc_pmr = unsafe { gicc.add(1) };
-    let gicc_bpr = unsafe { gicc.add(2) };
-
-    unsafe {
-        // enable group 0 interrupts
-        ptr::write_volatile(gicc_ctlr, 1);
-        // configure priority
-        ptr::write_volatile(gicc_pmr, 0xff);
-        // ptr::write_volatile(gicc_bpr, 0);
-    }
+    let mut gicc = gicv2::CpuInterface::new(gic.next().unwrap().starting_address);
+    gicc.enable();
 
     unsafe {
         // set up vector table base address
