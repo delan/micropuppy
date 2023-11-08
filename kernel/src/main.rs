@@ -3,6 +3,7 @@
 #![feature(panic_info_message)]
 #![deny(clippy::undocumented_unsafe_blocks)]
 
+mod gicv2;
 mod logging;
 
 use core::arch::{asm, global_asm};
@@ -10,6 +11,7 @@ use core::fmt::Write;
 use core::panic::PanicInfo;
 use core::ptr;
 
+use crate::gicv2::PpiNumber;
 use crate::logging::Pl011Writer;
 
 global_asm!(include_str!("start.s"));
@@ -104,20 +106,17 @@ pub extern "C" fn kernel_main() {
     // enable timer interrupts
     write_special_reg!("CNTP_CTL_EL0", 1u64);
 
-    let gicd = 0x8000000 as *mut u32;
-    let gicd_ctlr = unsafe { gicd.add(0) };
-    let gicd_isenabler = |n: usize| unsafe { gicd.add(64 + n) };
-    // let gicd_itargetsr = |n: usize| unsafe { gicd.add(512 + n) };
+    let timer = fdt.find_compatible(&["arm,armv8-timer"]).unwrap();
+    // TODO this panics? also document this
+    // https://github.com/torvalds/linux/blob/90b0c2b2edd1adff742c621e246562fbefa11b70/Documentation/devicetree/bindings/timer/arm%2Carch_timer.yaml#L44-L58
+    // let timer_ppi = timer.interrupts().unwrap().next().unwrap();
 
-    unsafe {
-        // enable group 0 interrupts
-        ptr::write_volatile(gicd_ctlr, 1);
-        // enable 0xd ppi = 0x1d interrupt
-        ptr::write_volatile(gicd_isenabler(0x1e / 32), 1 << (0x1e % 32));
-        // make core 0 the target
-        // ptr::write_volatile(gicd_itargetsr(0x1e / 4), 0x01 << (0x1e % 4));
-    }
-    
+    let gic = fdt.find_compatible(&["arm,cortex-a15-gic"]).unwrap();
+    let mut gic = gic.reg().unwrap();
+    let mut gicd = gicv2::Distributor::new(gic.next().unwrap().starting_address);
+    gicd.enable();
+    gicd.enable_ppi(PpiNumber(0xe));
+
     let gicc = 0x8010000 as *mut u32;
     let gicc_ctlr = unsafe { gicc.add(0) };
     let gicc_pmr = unsafe { gicc.add(1) };
