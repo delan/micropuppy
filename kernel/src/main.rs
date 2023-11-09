@@ -5,6 +5,7 @@
 
 mod gicv2;
 mod logging;
+mod reg;
 
 use core::arch::{asm, global_asm};
 use core::fmt::Write;

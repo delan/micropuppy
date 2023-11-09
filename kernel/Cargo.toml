@@ -10,3 +10,4 @@ a53 = { path = "../a53" }
 byteorder = { version = "1.5.0", default-features = false }
 fdt = "0.1.5"
 log = "0.4.20"
+vcell = "0.1.3"
