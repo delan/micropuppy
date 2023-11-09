@@ -9,7 +9,7 @@ pub trait SystemRegisterSpec {
 }
 
 impl<T: SystemRegisterSpec> RegisterSpec for T {
-    type Type = u64;
+    type Bits = u64;
 }
 
 pub struct Register<S: SystemRegisterSpec> {
@@ -27,20 +27,20 @@ impl<S: SystemRegisterSpec> Register<S> {
 
 impl<S: SystemRegisterSpec + RegisterReadable> Register<S>
 where
-    S: RegisterSpec<Type = u64>,
+    S: RegisterSpec<Bits = u64>,
 {
-    pub fn read<R>(&self, reader: impl FnOnce(&RegisterRead<S>) -> R) -> R {
-        let r = RegisterRead::new(S::read());
+    pub fn read<R>(&self, reader: impl FnOnce(&RegisterReader<S>) -> R) -> R {
+        let r = RegisterReader::new(S::read());
         reader(&r)
     }
 }
 
 impl<S: SystemRegisterSpec + RegisterWritable> Register<S>
 where
-    S: RegisterSpec<Type = u64>,
+    S: RegisterSpec<Bits = u64>,
 {
-    pub unsafe fn write_zero(&self, writer: impl FnOnce(&mut RegisterWrite<S>)) {
-        let mut w = RegisterWrite::zero();
+    pub unsafe fn write_zero(&self, writer: impl FnOnce(&mut RegisterWriter<S>)) {
+        let mut w = RegisterWriter::zero();
         writer(&mut w);
         S::write(w.bits);
     }
@@ -48,10 +48,10 @@ where
 
 impl<S: SystemRegisterSpec + RegisterWritable + RegisterDefault> Register<S>
 where
-    S: RegisterSpec<Type = u64>,
+    S: RegisterSpec<Bits = u64>,
 {
-    pub fn write_default(&self, writer: impl FnOnce(&mut RegisterWrite<S>)) {
-        let mut w = RegisterWrite::default();
+    pub fn write_default(&self, writer: impl FnOnce(&mut RegisterWriter<S>)) {
+        let mut w = RegisterWriter::default();
         writer(&mut w);
         S::write(w.bits);
     }

@@ -2,7 +2,7 @@ use core::arch::asm;
 
 use crate::reg::system::SystemRegisterSpec;
 use crate::reg::{
-    RegisterDefault, RegisterRead, RegisterReadable, RegisterWritable, RegisterWrite,
+    RegisterDefault, RegisterReadable, RegisterReader, RegisterWritable, RegisterWriter,
 };
 
 pub struct DAIF;
@@ -27,7 +27,7 @@ impl RegisterDefault for DAIF {
     const DEFAULT_VALUE: u64 = 0x3c0;
 }
 
-impl RegisterRead<DAIF> {
+impl RegisterReader<DAIF> {
     pub fn d(&self) -> bool {
         self.bit::<9>()
     }
@@ -45,7 +45,7 @@ impl RegisterRead<DAIF> {
     }
 }
 
-impl RegisterWrite<DAIF> {
+impl RegisterWriter<DAIF> {
     pub fn d(&mut self, d: bool) {
         unsafe { self.bit::<9>(d) }
     }

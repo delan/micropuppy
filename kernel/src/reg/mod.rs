@@ -4,7 +4,7 @@ use core::ops;
 pub mod memory_mapped;
 pub mod system;
 
-pub trait RegisterType:
+pub trait RegisterBits:
     Copy
     + Default
     + From<bool>
@@ -20,7 +20,7 @@ pub trait RegisterType:
 }
 
 pub trait RegisterSpec {
-    type Type: RegisterType;
+    type Bits: RegisterBits;
 }
 
 pub trait RegisterReadable: RegisterSpec {}
@@ -28,36 +28,36 @@ pub trait RegisterReadable: RegisterSpec {}
 pub trait RegisterWritable: RegisterSpec {}
 
 pub trait RegisterDefault: RegisterSpec {
-    const DEFAULT_VALUE: Self::Type;
+    const DEFAULT_VALUE: Self::Bits;
 }
 
-pub struct RegisterRead<S: RegisterSpec> {
-    pub bits: S::Type,
+pub struct RegisterReader<S: RegisterSpec> {
+    pub bits: S::Bits,
 }
 
-impl<S: RegisterSpec> RegisterRead<S> {
-    fn new(bits: S::Type) -> Self {
+impl<S: RegisterSpec> RegisterReader<S> {
+    fn new(bits: S::Bits) -> Self {
         Self { bits }
     }
 
-    pub fn bits(&self) -> S::Type {
+    pub fn bits(&self) -> S::Bits {
         self.bits
     }
 
     pub fn bit<const OFFSET: usize>(&self) -> bool {
-        self.field::<OFFSET, 1>() != S::Type::zero()
+        self.field::<OFFSET, 1>() != S::Bits::zero()
     }
 
-    pub fn field<const OFFSET: usize, const SIZE: usize>(&self) -> S::Type {
-        (self.bits >> OFFSET) & S::Type::mask::<SIZE>()
+    pub fn field<const OFFSET: usize, const SIZE: usize>(&self) -> S::Bits {
+        (self.bits >> OFFSET) & S::Bits::mask::<SIZE>()
     }
 }
 
-pub struct RegisterWrite<S: RegisterSpec> {
-    pub bits: S::Type,
+pub struct RegisterWriter<S: RegisterSpec> {
+    pub bits: S::Bits,
 }
 
-impl<S: RegisterSpec> RegisterWrite<S> {
+impl<S: RegisterSpec> RegisterWriter<S> {
     fn zero() -> Self {
         Self {
             bits: Default::default(),
@@ -65,7 +65,7 @@ impl<S: RegisterSpec> RegisterWrite<S> {
     }
 }
 
-impl<S: RegisterSpec + RegisterDefault> RegisterWrite<S> {
+impl<S: RegisterSpec + RegisterDefault> RegisterWriter<S> {
     fn default() -> Self {
         Self {
             bits: S::DEFAULT_VALUE,
@@ -73,8 +73,8 @@ impl<S: RegisterSpec + RegisterDefault> RegisterWrite<S> {
     }
 }
 
-impl<S: RegisterSpec> RegisterWrite<S> {
-    pub unsafe fn bits(&mut self, bits: S::Type) {
+impl<S: RegisterSpec> RegisterWriter<S> {
+    pub unsafe fn bits(&mut self, bits: S::Bits) {
         self.bits = bits;
     }
 
@@ -82,14 +82,14 @@ impl<S: RegisterSpec> RegisterWrite<S> {
         self.field::<OFFSET, 1>(bit.into());
     }
 
-    pub unsafe fn field<const OFFSET: usize, const SIZE: usize>(&mut self, field: S::Type) {
-        let mask = S::Type::mask::<SIZE>();
+    pub unsafe fn field<const OFFSET: usize, const SIZE: usize>(&mut self, field: S::Bits) {
+        let mask = S::Bits::mask::<SIZE>();
 
         self.bits = (self.bits & !(mask << OFFSET)) | ((field & mask) << OFFSET);
     }
 }
 
-impl RegisterType for u64 {
+impl RegisterBits for u64 {
     fn zero() -> Self {
         0
     }
@@ -100,10 +100,10 @@ impl RegisterType for u64 {
 }
 
 impl RegisterSpec for u64 {
-    type Type = u64;
+    type Bits = u64;
 }
 
-impl RegisterType for u32 {
+impl RegisterBits for u32 {
     fn zero() -> Self {
         0
     }
@@ -114,5 +114,5 @@ impl RegisterType for u32 {
 }
 
 impl RegisterSpec for u32 {
-    type Type = u32;
+    type Bits = u32;
 }

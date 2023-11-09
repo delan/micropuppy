@@ -1,36 +1,29 @@
-use core::marker::PhantomData;
-use core::mem::size_of;
-
 use vcell::VolatileCell;
 
 use super::*;
 
-pub struct Register<S: RegisterSpec> {
-    cell: VolatileCell<S::Type>,
-    phantom: PhantomData<S>,
-}
-
-const _: () = assert!(size_of::<Register<u32>>() == size_of::<u32>());
+#[repr(transparent)]
+pub struct Register<S: RegisterSpec>(VolatileCell<S::Bits>);
 
 impl<S: RegisterSpec + RegisterReadable> Register<S> {
-    pub fn read<R>(&self, reader: impl FnOnce(&RegisterRead<S>) -> R) -> R {
-        let r = RegisterRead::new(self.cell.get());
+    pub fn read<R>(&self, reader: impl FnOnce(&RegisterReader<S>) -> R) -> R {
+        let r = RegisterReader::new(self.0.get());
         reader(&r)
     }
 }
 
 impl<S: RegisterSpec + RegisterWritable> Register<S> {
-    pub unsafe fn write_zero(&self, writer: impl FnOnce(&mut RegisterWrite<S>)) {
-        let mut w = RegisterWrite::zero();
+    pub unsafe fn write_zero(&self, writer: impl FnOnce(&mut RegisterWriter<S>)) {
+        let mut w = RegisterWriter::zero();
         writer(&mut w);
-        self.cell.set(w.bits);
+        self.0.set(w.bits);
     }
 }
 
 impl<S: RegisterSpec + RegisterDefault> Register<S> {
-    pub fn write_default(&self, writer: impl FnOnce(&mut RegisterWrite<S>)) {
-        let mut w = RegisterWrite::default();
+    pub fn write_default(&self, writer: impl FnOnce(&mut RegisterWriter<S>)) {
+        let mut w = RegisterWriter::default();
         writer(&mut w);
-        self.cell.set(w.bits);
+        self.0.set(w.bits);
     }
 }
