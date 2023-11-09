@@ -1,4 +1,4 @@
-use core::{ptr, mem::size_of};
+use core::{mem::size_of, ptr};
 
 use byteorder::{BigEndian, ByteOrder};
 
