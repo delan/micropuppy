@@ -124,7 +124,7 @@ pub extern "C" fn kernel_main() {
 
     // TODO document this, is it the virt or the non-secure phys?
     // https://github.com/torvalds/linux/blob/90b0c2b2edd1adff742c621e246562fbefa11b70/Documentation/devicetree/bindings/timer/arm%2Carch_timer.yaml#L44-L58
-    gicd.enable_interrupt(timer_interrupts.nth(1).unwrap().interrupt_id());
+    gicd.enable_interrupt(timer_interrupts.nth(1).unwrap().interrupt_id().unwrap());
 
     let mut gicc = gicv2::CpuInterface::new(gic.next().unwrap().starting_address);
     gicc.enable();

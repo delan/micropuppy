@@ -2,12 +2,26 @@ use core::{ptr, mem::size_of};
 
 use byteorder::{BigEndian, ByteOrder};
 
+macro_rules! bounds_checked {
+    ($(#[$meta:meta])* $vis:vis struct $name:ident ($int:ident ($low:literal ..= $high:literal))) => {
+        $(#[$meta])* $vis struct $name($int);
+        impl TryFrom<$int> for $name {
+            type Error = ();
+            fn try_from(inner: $int) -> Result<Self, Self::Error> {
+                match inner {
+                    $low ..= $high => Ok(Self(inner)),
+                    _ => Err(()),
+                }
+            }
+        }
+    };
+    ($($(#[$meta:meta])* $vis:vis struct $name:ident ($($details:tt)+);)+) => {
+        $(bounds_checked!($(#[$meta])* $vis struct $name ($($details)+));)+
+    };
+}
+
 pub struct Distributor(*mut u32);
 pub struct CpuInterface(*mut u32);
-
-/// GIC interrupt ID, 0 through 1023.
-#[derive(Debug)]
-pub struct InterruptId(pub usize);
 
 /// Interrupt specifier, as found in devicetree.
 ///
@@ -15,10 +29,17 @@ pub struct InterruptId(pub usize);
 /// https://github.com/torvalds/linux/blob/305230142ae0637213bf6e04f6d9f10bbcb74af8/Documentation/devicetree/bindings/interrupt-controller/arm%2Cgic.yaml#L71-L93
 #[derive(Debug)]
 pub struct InterruptSpecifier<'dt>(&'dt [u8]);
-#[derive(Debug)]
-pub struct PpiNumber(pub usize);
-#[derive(Debug)]
-pub struct SpiNumber(pub usize);
+
+bounds_checked! {
+    /// GIC interrupt ID.
+    #[derive(Debug)] pub struct InterruptId(usize (0..=1023));
+
+    /// Zero-based PPI number, as found in devicetree.
+    #[derive(Debug)] pub struct PpiNumber(usize (0..=15));
+
+    /// Zero-based SPI number, as found in devicetree.
+    #[derive(Debug)] pub struct SpiNumber(usize (0..=987));
+}
 
 impl Distributor {
     pub fn new(base_address: *const u8) -> Self {
@@ -91,12 +112,12 @@ impl InterruptSpecifier<'_> {
         InterruptSpecifierIter(interrupts)
     }
 
-    pub fn interrupt_id(&self) -> InterruptId {
+    pub fn interrupt_id(&self) -> Result<InterruptId, ()> {
         let interrupt_type = BigEndian::read_u32(&self.0[0..]);
         let interrupt_number = BigEndian::read_u32(&self.0[4..]);
         match interrupt_type {
-            0 => SpiNumber(as_usize(interrupt_number)).into(),
-            1 => PpiNumber(as_usize(interrupt_number)).into(),
+            0 => Ok(SpiNumber::try_from(as_usize(interrupt_number))?.into()),
+            1 => Ok(PpiNumber::try_from(as_usize(interrupt_number))?.into()),
             _ => panic!(),
         }
     }
