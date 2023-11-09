@@ -11,6 +11,8 @@ use super::*;
 #[repr(transparent)]
 pub struct Register<S: RegisterSpec>(VolatileCell<S::Bits>);
 
+pub type PaddingBytes<const BYTES: usize> = [Register<u8>; BYTES];
+
 impl<S: RegisterSpec + RegisterReadable> Register<S> {
     /// Reads the current value of the register, providing access through an instance of
     /// [`RegisterReader`].
@@ -55,4 +57,49 @@ impl<S: RegisterSpec + RegisterInitial> Register<S> {
         writer(&mut w);
         self.0.set(w.bits);
     }
+}
+
+#[macro_export]
+macro_rules! memory_mapped_register {
+    { $name:ident($bits:ty) } => {
+        #[allow(non_camel_case_types)]
+        pub struct $name;
+
+        impl RegisterSpec for $name {
+            type Bits = $bits;
+        }
+    };
+    { $name:ident($bits:ty), r } => {
+        reg!($name, $bits);
+
+        impl RegisterReadable for $name {}
+    };
+    { $name:ident($bits:ty), w } => {
+        reg!($name, $bits);
+
+        impl RegisterWritable for $name {}
+    };
+    { $name:ident($bits:ty), wi=$initial:literal } => {
+        reg!($name($bits));
+
+        impl RegisterWritable for $name {}
+        impl RegisterInitial for $name {
+            const INITIAL_VALUE: Self::Bits = $initial;
+        }
+    };
+    { $name:ident($bits:ty), rw } => {
+        reg!($name, $bits);
+
+        impl RegisterReadable for $name {}
+        impl RegisterWritable for $name {}
+    };
+    { $name:ident($bits:ty), rwi=$initial:literal } => {
+        reg!($name($bits));
+
+        impl RegisterReadable for $name {}
+        impl RegisterWritable for $name {}
+        impl RegisterInitial for $name {
+            const INITIAL_VALUE: Self::Bits = $initial;
+        }
+    };
 }

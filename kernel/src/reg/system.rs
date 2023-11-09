@@ -3,7 +3,7 @@ use core::marker::PhantomData;
 
 use super::*;
 
-pub trait SystemRegisterSpec {
+pub trait SystemRegisterSpec: RegisterSpec<Bits = u64> {
     // HACK: since asm! doesn't like non-literal string values, we can't just have an associated
     // constant with the system register name.
 
@@ -27,10 +27,7 @@ impl<S: SystemRegisterSpec> Register<S> {
     }
 }
 
-impl<S: SystemRegisterSpec + RegisterReadable> Register<S>
-where
-    S: RegisterSpec<Bits = u64>,
-{
+impl<S: SystemRegisterSpec + RegisterReadable> Register<S> {
     /// Reads the current value of the register, providing access through an instance of
     /// [`RegisterReader`].
     ///
@@ -44,10 +41,7 @@ where
     }
 }
 
-impl<S: SystemRegisterSpec + RegisterWritable> Register<S>
-where
-    S: RegisterSpec<Bits = u64>,
-{
+impl<S: SystemRegisterSpec + RegisterWritable> Register<S> {
     /// Writes a value built by an instance of [`RegisterWriter`], initialised to zero, to the
     /// register.
     ///
@@ -65,10 +59,7 @@ where
     }
 }
 
-impl<S: SystemRegisterSpec + RegisterWritable + RegisterInitial> Register<S>
-where
-    S: RegisterSpec<Bits = u64>,
-{
+impl<S: SystemRegisterSpec + RegisterWritable + RegisterInitial> Register<S> {
     /// Writes a value built by an instance of [`RegisterWriter`], initialised to the register's
     /// initial value (provided by [`RegisterInitial`]), to the register.
     ///

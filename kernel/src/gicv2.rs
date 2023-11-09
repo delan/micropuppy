@@ -1,6 +1,8 @@
-use core::{mem::size_of, ptr};
+use core::mem::size_of;
 
 use byteorder::{BigEndian, ByteOrder};
+
+use crate::a53::gicv2::{CpuInterfaceRegisterBlock, DistributorRegisterBlock};
 
 macro_rules! bounds_checked {
     ($(#[$meta:meta])* $vis:vis struct $name:ident ($int:ident ($low:literal ..= $high:literal))) => {
@@ -20,8 +22,8 @@ macro_rules! bounds_checked {
     };
 }
 
-pub struct Distributor(*mut u32);
-pub struct CpuInterface(*mut u32);
+pub struct Distributor(*mut DistributorRegisterBlock);
+pub struct CpuInterface(*mut CpuInterfaceRegisterBlock);
 
 /// Interrupt specifier, as found in devicetree.
 ///
@@ -43,55 +45,39 @@ bounds_checked! {
 
 impl Distributor {
     pub fn new(base_address: *const u8) -> Self {
-        Self(base_address as *mut u32)
+        Self(base_address as *mut DistributorRegisterBlock)
     }
 
     pub fn enable(&mut self) {
-        unsafe {
-            // enable group 0 interrupts (group 1 currently disabled)
-            ptr::write_volatile(self.ctlr(), 1);
-        }
+        let gicd = unsafe { &*self.0 };
+
+        // enable group 0 interrupts (group 1 currently disabled)
+        gicd.ctlr.write_initial(|w| w.enable(true));
     }
 
     pub fn enable_interrupt(&mut self, interrupt_id: impl Into<InterruptId>) {
-        unsafe {
-            let interrupt_id = interrupt_id.into().0;
-            let isenabler = self.isenabler(interrupt_id / 32);
-            ptr::write_volatile(isenabler, 1 << (interrupt_id % 32));
-        }
-    }
+        let gicd = unsafe { &*self.0 };
 
-    unsafe fn ctlr(&self) -> *mut u32 {
-        self.0.add(0)
-    }
+        let interrupt_id = interrupt_id.into().0;
+        let (n, m) = (interrupt_id / 32, interrupt_id % 32);
 
-    unsafe fn isenabler(&self, n: usize) -> *mut u32 {
-        self.0.add(64 + n)
+        gicd.isenabler[n].write_initial(|w| w.set_enable(m));
     }
 }
 
 impl CpuInterface {
     pub fn new(base_address: *const u8) -> Self {
-        Self(base_address as *mut u32)
+        Self(base_address as *mut CpuInterfaceRegisterBlock)
     }
 
     pub fn enable(&mut self) {
-        unsafe {
-            // enable group 0 interrupts
-            // all other bits zero in IHI 0048B.b, Figure 4-24
-            ptr::write_volatile(self.ctlr(), 1);
+        let gicc = unsafe { &*self.0 };
 
-            // set priority threshold to most lenient
-            ptr::write_volatile(self.pmr(), 0xff);
-        }
-    }
+        // enable group 0 interrupts
+        gicc.ctlr.write_initial(|w| w.enable(true));
 
-    unsafe fn ctlr(&self) -> *mut u32 {
-        self.0.add(0)
-    }
-
-    unsafe fn pmr(&self) -> *mut u32 {
-        self.0.add(1)
+        // set priority threshold to most lenient
+        gicc.pmr.write_initial(|w| w.priority(0xff));
     }
 }
 

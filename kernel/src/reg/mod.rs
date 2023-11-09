@@ -1,6 +1,6 @@
 //! Provides safe, strongly-typed access to registers (e.g. memory-mapped or system registers).
 use core::cmp;
-use core::ops;
+use core::ops::{self, RangeInclusive};
 
 pub mod memory_mapped;
 pub mod system;
@@ -31,8 +31,8 @@ pub trait RegisterBits:
     /// Returns `0`.
     fn zero() -> Self;
 
-    /// Returns a contiguous sequence of `WIDTH` bits with value `1`, beginning at the LSB.
-    fn mask<const WIDTH: usize>() -> Self;
+    /// Returns a contiguous sequence of `width` bits with value `1`, beginning at the LSB.
+    fn mask(width: usize) -> Self;
 }
 
 pub trait RegisterSpec {
@@ -96,14 +96,23 @@ impl<S: RegisterSpec> RegisterReader<S> {
         self.bits
     }
 
-    /// Returns the value of the bit at offset `OFFSET`.
-    pub fn bit<const OFFSET: usize>(&self) -> bool {
-        self.field::<OFFSET, 1>() != S::Bits::zero()
+    /// Returns the value of the bit at offset `offset`.
+    pub fn bit(&self, offset: usize) -> bool {
+        self.field(offset..=offset) != S::Bits::zero()
     }
 
-    /// Returns the value of a contiguous `SIZE`-bit field with its LSB at the offset `OFFSET`.
-    pub fn field<const OFFSET: usize, const SIZE: usize>(&self) -> S::Bits {
-        (self.bits >> OFFSET) & S::Bits::mask::<SIZE>()
+    /// Returns the value of a contiguous bit field with its LSB at the offset `range.start()` and
+    /// MSB at the offset `range.end()`.
+    ///
+    /// ```text
+    ///   bits: | ... | |x|x|x| ... |x|x| | ... | | | | |
+    ///                  ^             ^               ^
+    /// offset:          range.end()   range.start()   0
+    /// ```
+    pub fn field(&self, range: RangeInclusive<usize>) -> S::Bits {
+        let FieldSpec { offset, size } = range.field_spec();
+
+        (self.bits >> offset) & S::Bits::mask(size)
     }
 }
 
@@ -117,25 +126,32 @@ impl<S: RegisterSpec> RegisterWriter<S> {
         self.bits = bits;
     }
 
-    /// Sets the value of the bit at offset `OFFSET`.
+    /// Sets the value of the bit at offset `offset`.
     ///
     /// # Safety
     /// Setting an unsupported value may result in undefined behaviour. Refer to the register's
     /// definition to determine valid values.
-    pub unsafe fn bit<const OFFSET: usize>(&mut self, bit: bool) {
-        self.field::<OFFSET, 1>(bit.into());
+    pub unsafe fn bit(&mut self, offset: usize, bit: bool) {
+        self.field(offset..=offset, bit.into());
     }
 
-    /// Sets the value of a contiguous `SIZE`-bit field with its LSB at the offset `OFFSET`. Values
-    /// larger than the field size will be masked to fit the field.
+    /// Sets the value of a contiguous bit field with its LSB at the offset `range.start()` and MSB
+    /// at the offset `range.end()`.
+    ///
+    /// ```text
+    ///   bits: | ... | |x|x|x| ... |x|x| | ... | | | | |
+    ///                  ^             ^               ^
+    /// offset:          range.end()   range.start()   0
+    /// ```
     ///
     /// # Safety
     /// Setting an unsupported value may result in undefined behaviour. Refer to the register's
     /// definition to determine valid values.
-    pub unsafe fn field<const OFFSET: usize, const SIZE: usize>(&mut self, field: S::Bits) {
-        let mask = S::Bits::mask::<SIZE>();
+    pub unsafe fn field(&mut self, range: RangeInclusive<usize>, field: S::Bits) {
+        let FieldSpec { offset, size } = range.field_spec();
+        let mask = S::Bits::mask(size);
 
-        self.bits = (self.bits & !(mask << OFFSET)) | ((field & mask) << OFFSET);
+        self.bits = (self.bits & !(mask << offset)) | ((field & mask) << offset);
     }
 }
 
@@ -146,8 +162,8 @@ macro_rules! register_bits {
                 0
             }
 
-            fn mask<const WIDTH: usize>() -> Self {
-                <$ty>::MAX >> ($width - WIDTH)
+            fn mask(width: usize) -> Self {
+                <$ty>::MAX >> ($width - width)
             }
         }
 
@@ -161,3 +177,26 @@ register_bits!(u64, 64);
 register_bits!(u32, 32);
 register_bits!(u16, 16);
 register_bits!(u8, 8);
+
+/// Offset and size of a field.
+struct FieldSpec {
+    /// Offset of the LSB of this field.
+    offset: usize,
+    /// Number of bits within this field.
+    size: usize,
+}
+
+/// Extension trait to provide offset and size values from a [`RangeInclusive`].
+trait RangeInclusiveExt {
+    /// Field offset and size represented by this [`RangeInclusive`].
+    fn field_spec(&self) -> FieldSpec;
+}
+
+impl RangeInclusiveExt for RangeInclusive<usize> {
+    fn field_spec(&self) -> FieldSpec {
+        FieldSpec {
+            offset: *self.start(),
+            size: self.end() + 1 - self.start(),
+        }
+    }
+}

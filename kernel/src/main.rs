@@ -3,6 +3,7 @@
 #![feature(panic_info_message)]
 #![deny(clippy::undocumented_unsafe_blocks)]
 
+mod a53;
 mod gicv2;
 mod logging;
 mod reg;
@@ -11,7 +12,9 @@ use core::arch::{asm, global_asm};
 use core::fmt::Write;
 use core::panic::PanicInfo;
 
+use crate::a53::daif::DAIF;
 use crate::logging::Pl011Writer;
+use crate::reg::system::Register as SystemRegister;
 
 global_asm!(include_str!("start.s"));
 global_asm!(include_str!("vectors.s"));
@@ -132,9 +135,11 @@ pub extern "C" fn kernel_main() {
     unsafe {
         // set up vector table base address
         asm!("msr VBAR_EL1, {}", in(reg) vectors);
-        // unmask all interrupts
-        asm!("msr DAIF, {:x}", in(reg) 0);
     }
+
+    // unmask interrupts
+    let daif = SystemRegister::<DAIF>::new();
+    daif.write_initial(|w| w.i(false));
 
     log::debug!("CNTP_CTL_EL0 = {:016X}h", read_special_reg!("CNTP_CTL_EL0"));
 
