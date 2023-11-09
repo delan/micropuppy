@@ -1,9 +1,7 @@
 use core::arch::asm;
 
+use crate::reg::prelude::*;
 use crate::reg::system::SystemRegisterSpec;
-use crate::reg::{
-    RegisterDefault, RegisterReadable, RegisterReader, RegisterWritable, RegisterWriter,
-};
 
 pub struct DAIF;
 
@@ -23,8 +21,8 @@ impl RegisterReadable for DAIF {}
 
 impl RegisterWritable for DAIF {}
 
-impl RegisterDefault for DAIF {
-    const DEFAULT_VALUE: u64 = 0x3c0;
+impl RegisterInitial for DAIF {
+    const INITIAL_VALUE: u64 = 0x3c0;
 }
 
 impl RegisterReader<DAIF> {

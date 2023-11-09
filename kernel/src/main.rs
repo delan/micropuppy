@@ -136,7 +136,7 @@ pub extern "C" fn kernel_main() {
         // set up vector table base address
         asm!("msr VBAR_EL1, {}", in(reg) vectors);
         // unmask interrupts
-        Register::<DAIF>::new().write_default(|w| w.i(false));
+        Register::<DAIF>::new().write_initial(|w| w.i(false));
     }
 
     log::debug!("CNTP_CTL_EL0 = {:016X}h", read_special_reg!("CNTP_CTL_EL0"));
