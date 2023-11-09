@@ -1,6 +1,7 @@
 #![no_std]
 #![no_main]
 #![feature(panic_info_message)]
+#![feature(asm_const)]
 #![deny(clippy::undocumented_unsafe_blocks)]
 
 mod a53;

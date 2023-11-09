@@ -6,13 +6,13 @@ use crate::reg::system::SystemRegisterSpec;
 pub struct DAIF;
 
 impl SystemRegisterSpec for DAIF {
-    fn read() -> u64 {
+    unsafe fn mrs() -> u64 {
         let bits;
         unsafe { asm!("mrs DAIF, {}", out(reg) bits) };
         bits
     }
 
-    fn write(bits: u64) {
+    unsafe fn msr(bits: u64) {
         unsafe { asm!("msr DAIF, {}", in(reg) bits) };
     }
 }

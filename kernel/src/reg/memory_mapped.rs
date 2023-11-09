@@ -1,3 +1,4 @@
+//! Memory-mapped registers.
 use vcell::VolatileCell;
 
 use super::*;
