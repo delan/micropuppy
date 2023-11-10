@@ -1,0 +1,37 @@
+name: build documentation
+
+on: workflow_call
+
+jobs:
+  build-docs:
+    runs-on: ubuntu-latest
+    steps:
+      - name: checkout code
+        uses: actions/checkout@v4
+      - name: install nix
+        uses: cachix/install-nix-action@v23
+        with:
+          # as per install-nix-action documentation: "helps work around rate limit issues"
+          github_access_token: ${{ secrets.GITHUB_TOKEN }}
+      - name: install nix packages
+        # HACK: this is just a way to force all the flake inputs to be fetched within it's own step
+        run: nix develop --command echo
+
+      - name: build documentation
+        # we want the /docs/ url to go somewhere, but since we have a workspace the top-level docs
+        # folder is just full of subdirectories corresponding to each workspace member.
+        # `--enable-index-page` was proposed and added to rustdoc a long time ago [1, 2] but hasn't
+        # been stabilised nor support added to cargo [3].
+        #
+        # [1]: proposed in https://github.com/rust-lang/rust/issues/16103
+        # [2]: merged in https://github.com/rust-lang/rust/pull/54543
+        # [3]: request for cargo integration https://github.com/rust-lang/rust/issues/73185
+        run: nix develop --ignore-environment --keep RUSTDOCFLAGS --command cargo doc
+        env:
+          RUSTDOCFLAGS: -Zunstable-options --enable-index-page
+
+      - name: upload documentation artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: docs
+          path: target/doc/
