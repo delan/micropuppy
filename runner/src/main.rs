@@ -143,7 +143,6 @@ fn main() -> Result<()> {
 
     let build = || -> Result<()> {
         runner.step("build");
-        runner.invoke(command::make("build").directory("a53/"))?;
         runner.invoke(
             command::make("build")
                 .directory("kernel/")
@@ -155,7 +154,6 @@ fn main() -> Result<()> {
 
     let clean = || -> Result<()> {
         runner.step("clean");
-        runner.invoke(command::make("clean").directory("a53/"))?;
         runner.invoke(command::make("clean").directory("kernel/"))?;
 
         Ok(())
