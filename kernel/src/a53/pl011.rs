@@ -54,7 +54,7 @@ reg! { UARTDR(u32), rwi=0x0000_0000 }
 
 impl RegisterReader<UARTDR> {
     pub fn data(&self) -> u8 {
-        self.field(0..=7).try_into().expect("fuck")
+        self.field(0..=7) as _
     }
 }
 

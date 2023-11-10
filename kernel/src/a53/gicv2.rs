@@ -140,12 +140,12 @@ reg! { GICC_PMR(u32), rwi=0x0000_0000 }
 
 impl RegisterReader<GICC_PMR> {
     pub fn priority(&self) -> u8 {
-        self.field(0..=7).try_into().expect("fuck")
+        self.field(0..=7) as _
     }
 }
 
 impl RegisterWriter<GICC_PMR> {
     pub fn priority(&mut self, priority: u8) {
-        unsafe { self.field(0..=7, priority.into()) }
+        unsafe { self.field(0..=7, priority as _) }
     }
 }
