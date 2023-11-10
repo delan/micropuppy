@@ -63,6 +63,7 @@ impl<S: RegisterSpec + RegisterInitial> Register<S> {
 macro_rules! memory_mapped_register {
     { $name:ident($bits:ty) } => {
         #[allow(non_camel_case_types)]
+        #[allow(clippy::upper_case_acronyms)]
         pub struct $name;
 
         impl RegisterSpec for $name {
@@ -70,12 +71,12 @@ macro_rules! memory_mapped_register {
         }
     };
     { $name:ident($bits:ty), r } => {
-        reg!($name, $bits);
+        reg!($name($bits));
 
         impl RegisterReadable for $name {}
     };
     { $name:ident($bits:ty), w } => {
-        reg!($name, $bits);
+        reg!($name($bits));
 
         impl RegisterWritable for $name {}
     };
@@ -88,7 +89,7 @@ macro_rules! memory_mapped_register {
         }
     };
     { $name:ident($bits:ty), rw } => {
-        reg!($name, $bits);
+        reg!($name($bits));
 
         impl RegisterReadable for $name {}
         impl RegisterWritable for $name {}

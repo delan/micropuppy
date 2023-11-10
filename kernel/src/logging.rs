@@ -1,6 +1,6 @@
 use core::fmt::{self, Write};
 
-use a53::pl011;
+use crate::a53::pl011::Pl011RegisterBlock;
 
 pub fn init(writer: Pl011Writer, max_level: log::LevelFilter) {
     unsafe { WRITER = Some(writer) };
@@ -44,20 +44,19 @@ impl log::Log for Logger {
 
 pub static mut WRITER: Option<Pl011Writer> = None;
 
-pub struct Pl011Writer(*mut pl011::RegisterBlock);
+pub struct Pl011Writer(*mut Pl011RegisterBlock);
 
 impl Pl011Writer {
     pub fn new(base_address: *const u8) -> Self {
-        Self(base_address as *mut pl011::RegisterBlock)
+        Self(base_address as *mut Pl011RegisterBlock)
     }
 }
 
 impl fmt::Write for Pl011Writer {
     fn write_str(&mut self, s: &str) -> Result<(), fmt::Error> {
+        let uart = unsafe { &*self.0 };
         for byte in s.bytes() {
-            unsafe {
-                (*self.0).uartdr.write_with_zero(|w| w.data().bits(byte));
-            }
+            uart.dr.write_initial(|w| w.data(byte));
         }
 
         Ok(())
