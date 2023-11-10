@@ -1,0 +1,19 @@
+name: build-docs
+run-name: build documentation
+on: workflow_call
+jobs:
+    build:
+        runs-on: ubuntu-latest
+        steps:
+            - name: checkout code
+              uses: actions/checkout@v4
+            - name: install rust and cargo
+              uses: dtolnay/rust-toolchain@stable
+
+            - name: build documentation
+              run: cargo doc
+
+            - name: upload documentation artifact
+              uses: actions/upload-artifact@v2
+              with:
+                  path: 'target/doc/'

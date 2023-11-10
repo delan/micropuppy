@@ -1,0 +1,27 @@
+name: deploy to pages
+run-name: deploy to pages
+on:
+  push:
+    branches: [github-actions-docs]
+jobs:
+  build-docs:
+    uses: ./.github/workflows/job-build-docs.yml
+  deploy:
+    needs: build-docs
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: download docs artifact
+        uses: actions/download-artifact@v3
+        with:
+          name: docs
+
+      - name: upload pages artifact
+        uses: actions/upload-pages-artifact@v2
+      - name: deploy to pages
+        uses: actions/deploy-pages@v2
