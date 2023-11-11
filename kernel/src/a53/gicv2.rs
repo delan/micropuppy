@@ -1,4 +1,6 @@
+use crate::gicv2::InterruptId;
 use crate::memory_mapped_register as reg;
+use crate::num::as_usize;
 use crate::reg::memory_mapped::{PaddingBytes, Register};
 use crate::reg::prelude::*;
 
@@ -89,9 +91,9 @@ pub struct CpuInterfaceRegisterBlock {
     /// 0x0008: GICC_BPR (Binary Point Register)
     pub bpr: Register<u32>,
     /// 0x000C: GICC_IAR (Interrupt Acknowledge Register)
-    pub iar: Register<u32>,
+    pub iar: Register<GICC_IAR>,
     /// 0x0010: GICC_EOIR (End of Interrupt Register)
-    pub eoir: Register<u32>,
+    pub eoir: Register<GICC_EOIR>,
     /// 0x0014: GICC_RPR (Running Priority Register)
     pub rpr: Register<u32>,
     /// 0x0018: GICC_HPPIR (Highest Priority Pending Interrupt Register)
@@ -147,5 +149,29 @@ impl RegisterReader<GICC_PMR> {
 impl RegisterWriter<GICC_PMR> {
     pub fn priority(&mut self, priority: u8) {
         unsafe { self.field(0..=7, priority as _) }
+    }
+}
+
+reg! { GICC_IAR(u32), r }
+
+impl RegisterReader<GICC_IAR> {
+    pub fn entire(&self) -> u32 {
+        self.bits()
+    }
+    pub fn cpuid(&self) -> u8 {
+        self.field(10..=12) as _
+    }
+    pub fn interrupt_id(&self) -> InterruptId {
+        as_usize(self.field(0..=9)).try_into().unwrap()
+    }
+}
+
+// IHI 0048B.b § 4.4.5 “If software writes the ID of a spurious interrupt to the
+// GICC_EOIR, the GIC ignores that write.”
+reg! { GICC_EOIR(u32), wi=0x000003FF }
+
+impl RegisterWriter<GICC_EOIR> {
+    pub fn entire_iar(&mut self, iar: u32) {
+        unsafe { self.bits(iar) }
     }
 }

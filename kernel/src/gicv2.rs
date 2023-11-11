@@ -1,8 +1,6 @@
-use core::mem::size_of;
-
 use byteorder::{BigEndian, ByteOrder};
 
-use crate::a53::gicv2::{CpuInterfaceRegisterBlock, DistributorRegisterBlock};
+use crate::{a53::gicv2::{CpuInterfaceRegisterBlock, DistributorRegisterBlock}, num::as_usize};
 
 macro_rules! bounds_checked {
     ($(#[$meta:meta])* $vis:vis struct $name:ident ($int:ident ($low:literal ..= $high:literal))) => {
@@ -44,7 +42,7 @@ bounds_checked! {
 }
 
 impl Distributor {
-    pub fn new(base_address: *const u8) -> Self {
+    pub const fn new(base_address: *const u8) -> Self {
         Self(base_address as *mut DistributorRegisterBlock)
     }
 
@@ -66,7 +64,7 @@ impl Distributor {
 }
 
 impl CpuInterface {
-    pub fn new(base_address: *const u8) -> Self {
+    pub const fn new(base_address: *const u8) -> Self {
         Self(base_address as *mut CpuInterfaceRegisterBlock)
     }
 
@@ -78,6 +76,18 @@ impl CpuInterface {
 
         // set priority threshold to most lenient
         gicc.pmr.write_initial(|w| w.priority(0xff));
+    }
+
+    /// Acknowledge an interrupt, returning the entire GICC_IAR, the cpuid, and the interrupt id.
+    pub fn acknowledge(&mut self) -> (u32, u8, InterruptId) {
+        let gicc = unsafe { &mut *self.0 };
+        gicc.iar.read(|r| (r.entire(), r.cpuid(), r.interrupt_id()))
+    }
+
+    /// Deactivate an interrupt, given its entire GICC_IAR as recommended by the GICC_EOIR docs.
+    pub fn deactivate(&mut self, iar: u32) {
+        let mut gicc = unsafe { &mut *self.0 };
+        gicc.eoir.write_initial(|w| w.entire_iar(iar))
     }
 }
 
@@ -121,11 +131,4 @@ impl<'dt> Iterator for InterruptSpecifierIter<'dt> {
         self.0 = &self.0[12..];
         Some(result)
     }
-}
-
-/// Convert u32 to usize, or compile error if usize is smaller than u32.
-/// Unlike try_into + unwrap, this fails even if the value would fit in usize.
-fn as_usize(value: u32) -> usize {
-    const _: () = assert!(size_of::<usize>() >= size_of::<u32>());
-    value as usize
 }

@@ -6,11 +6,13 @@
 mod a53;
 mod gicv2;
 mod logging;
+mod num;
 mod reg;
 
 use core::arch::{asm, global_asm};
 use core::fmt::Write;
 use core::panic::PanicInfo;
+use core::ptr::null;
 
 use crate::a53::daif::DAIF;
 use crate::logging::Pl011Writer;
@@ -46,6 +48,22 @@ macro_rules! write_special_reg {
             asm!(concat!("msr ", $special, ", {}"), in(reg) $value);
         }
     }};
+}
+
+// TODO starting with null feels bad, is this bad?
+static mut GICD: gicv2::Distributor = gicv2::Distributor::new(null());
+static mut GICC: gicv2::CpuInterface = gicv2::CpuInterface::new(null());
+static mut COUNT: usize = 0;
+
+#[no_mangle]
+extern "C" fn elx_irq() {
+    let (iar, cpuid, interrupt_id) = unsafe { GICC.acknowledge() };
+    let count = unsafe { COUNT };
+    log::debug!("elx_irq #{count}, iar = {iar}, cpuid = {cpuid}, interrupt_id = {interrupt_id:?}");
+    unsafe {
+        COUNT += 1;
+        GICC.deactivate(iar);
+    }
 }
 
 #[panic_handler]
@@ -122,15 +140,17 @@ pub extern "C" fn kernel_main() {
 
     let gic = fdt.find_compatible(&["arm,cortex-a15-gic"]).unwrap();
     let mut gic = gic.reg().unwrap();
-    let mut gicd = gicv2::Distributor::new(gic.next().unwrap().starting_address);
-    gicd.enable();
+    unsafe {
+        GICD = gicv2::Distributor::new(gic.next().unwrap().starting_address);
+        GICD.enable();
 
-    // TODO document this, is it the virt or the non-secure phys?
-    // https://github.com/torvalds/linux/blob/90b0c2b2edd1adff742c621e246562fbefa11b70/Documentation/devicetree/bindings/timer/arm%2Carch_timer.yaml#L44-L58
-    gicd.enable_interrupt(timer_interrupts.nth(1).unwrap().interrupt_id().unwrap());
+        // TODO document this, is it the virt or the non-secure phys?
+        // https://github.com/torvalds/linux/blob/90b0c2b2edd1adff742c621e246562fbefa11b70/Documentation/devicetree/bindings/timer/arm%2Carch_timer.yaml#L44-L58
+        GICD.enable_interrupt(timer_interrupts.nth(1).unwrap().interrupt_id().unwrap());
 
-    let mut gicc = gicv2::CpuInterface::new(gic.next().unwrap().starting_address);
-    gicc.enable();
+        GICC = gicv2::CpuInterface::new(gic.next().unwrap().starting_address);
+        GICC.enable();
+    }
 
     unsafe {
         // set up vector table base address
