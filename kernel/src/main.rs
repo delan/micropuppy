@@ -15,6 +15,7 @@ use core::panic::PanicInfo;
 use core::ptr::null;
 
 use crate::a53::daif::DAIF;
+use crate::gicv2::InterruptId;
 use crate::logging::Pl011Writer;
 use crate::reg::system::Register as SystemRegister;
 
@@ -50,20 +51,20 @@ macro_rules! write_special_reg {
     }};
 }
 
-// TODO starting with null feels bad, is this bad?
+// TODO starting with the incorrect values seems bad, is this bad?
+static mut TIMER_INTERRUPT: InterruptId = InterruptId::spurious();
 static mut GICD: gicv2::Distributor = gicv2::Distributor::new(null());
 static mut GICC: gicv2::CpuInterface = gicv2::CpuInterface::new(null());
-static mut COUNT: usize = 0;
 
 #[no_mangle]
-extern "C" fn elx_irq() {
-    let (iar, cpuid, interrupt_id) = unsafe { GICC.acknowledge() };
-    let count = unsafe { COUNT };
-    log::debug!("elx_irq #{count}, iar = {iar}, cpuid = {cpuid}, interrupt_id = {interrupt_id:?}");
-    unsafe {
-        COUNT += 1;
-        GICC.deactivate(iar);
+unsafe extern "C" fn elx_irq() {
+    let (iar, cpuid, interrupt_id) = GICC.acknowledge();
+    log::trace!("elx_irq iar = {iar}, cpuid = {cpuid}, interrupt_id = {interrupt_id:?}");
+    match interrupt_id {
+        x if x == TIMER_INTERRUPT => write_special_reg!("CNTP_TVAL_EL0", read_special_reg!("CNTFRQ_EL0") / 10),
+        _ => {}
     }
+    GICC.deactivate(iar);
 }
 
 #[panic_handler]
@@ -132,11 +133,13 @@ pub extern "C" fn kernel_main() {
     log::debug!("woof!!!! wraaaooo!!");
 
     // enable timer interrupts
+    log::debug!("CNTFRQ_EL0 = {:016X}h", read_special_reg!("CNTFRQ_EL0"));
     write_special_reg!("CNTP_CTL_EL0", 1u64);
 
     let timer = fdt.find_compatible(&["arm,armv8-timer"]).unwrap();
     let timer_interrupts = timer.property("interrupts").unwrap().value;
     let mut timer_interrupts = gicv2::InterruptSpecifier::interrupts_iter(timer_interrupts);
+    unsafe { TIMER_INTERRUPT = timer_interrupts.nth(1).unwrap().interrupt_id().unwrap() };
 
     let gic = fdt.find_compatible(&["arm,cortex-a15-gic"]).unwrap();
     let mut gic = gic.reg().unwrap();
@@ -146,7 +149,7 @@ pub extern "C" fn kernel_main() {
 
         // TODO document this, is it the virt or the non-secure phys?
         // https://github.com/torvalds/linux/blob/90b0c2b2edd1adff742c621e246562fbefa11b70/Documentation/devicetree/bindings/timer/arm%2Carch_timer.yaml#L44-L58
-        GICD.enable_interrupt(timer_interrupts.nth(1).unwrap().interrupt_id().unwrap());
+        GICD.enable_interrupt(TIMER_INTERRUPT);
 
         GICC = gicv2::CpuInterface::new(gic.next().unwrap().starting_address);
         GICC.enable();
@@ -160,8 +163,6 @@ pub extern "C" fn kernel_main() {
     // unmask interrupts
     let daif = SystemRegister::<DAIF>::new();
     daif.write_initial(|w| w.i(false));
-
-    log::debug!("CNTP_CTL_EL0 = {:016X}h", read_special_reg!("CNTP_CTL_EL0"));
 
     loop {}
 }

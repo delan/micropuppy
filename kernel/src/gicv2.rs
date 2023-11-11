@@ -5,6 +5,11 @@ use crate::{a53::gicv2::{CpuInterfaceRegisterBlock, DistributorRegisterBlock}, n
 macro_rules! bounds_checked {
     ($(#[$meta:meta])* $vis:vis struct $name:ident ($int:ident ($low:literal ..= $high:literal))) => {
         $(#[$meta])* $vis struct $name($int);
+        impl $name {
+            pub fn value(&self) -> $int {
+                self.0
+            }
+        }
         impl TryFrom<$int> for $name {
             type Error = ();
             fn try_from(inner: $int) -> Result<Self, Self::Error> {
@@ -32,13 +37,13 @@ pub struct InterruptSpecifier<'dt>(&'dt [u8]);
 
 bounds_checked! {
     /// GIC interrupt ID.
-    #[derive(Debug)] pub struct InterruptId(usize (0..=1023));
+    #[derive(Clone, Copy, Debug, PartialEq)] pub struct InterruptId(usize (0..=1023));
 
     /// Zero-based PPI number, as found in devicetree.
-    #[derive(Debug)] pub struct PpiNumber(usize (0..=15));
+    #[derive(Clone, Copy, Debug, PartialEq)] pub struct PpiNumber(usize (0..=15));
 
     /// Zero-based SPI number, as found in devicetree.
-    #[derive(Debug)] pub struct SpiNumber(usize (0..=987));
+    #[derive(Clone, Copy, Debug, PartialEq)] pub struct SpiNumber(usize (0..=987));
 }
 
 impl Distributor {
@@ -88,6 +93,12 @@ impl CpuInterface {
     pub fn deactivate(&mut self, iar: u32) {
         let mut gicc = unsafe { &mut *self.0 };
         gicc.eoir.write_initial(|w| w.entire_iar(iar))
+    }
+}
+
+impl InterruptId {
+    pub const fn spurious() -> Self {
+        Self(1023)
     }
 }
 
