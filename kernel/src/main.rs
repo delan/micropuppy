@@ -19,8 +19,8 @@ use crate::gicv2::InterruptId;
 use crate::logging::Pl011Writer;
 use crate::reg::system::Register as SystemRegister;
 
-global_asm!(include_str!("start.s"));
-global_asm!(include_str!("vectors.s"));
+global_asm!(include_str!("entry.s"), options(raw));
+
 extern "C" {
     fn vectors();
 }
