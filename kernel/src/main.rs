@@ -58,15 +58,15 @@ static mut GICC: gicv2::CpuInterface = gicv2::CpuInterface::new(null());
 
 #[no_mangle]
 unsafe extern "C" fn elx_irq() {
-    let (iar, cpuid, interrupt_id) = GICC.acknowledge();
-    log::trace!("elx_irq iar = {iar}, cpuid = {cpuid}, interrupt_id = {interrupt_id:?}");
-    match interrupt_id {
-        x if x == TIMER_INTERRUPT => {
-            write_special_reg!("CNTP_TVAL_EL0", read_special_reg!("CNTFRQ_EL0") / 10)
+    GICC.handle(|cpuid, interrupt_id| {
+        log::trace!("elx_irq cpuid = {cpuid}, interrupt_id = {interrupt_id:?}");
+        match interrupt_id {
+            x if x == TIMER_INTERRUPT => {
+                write_special_reg!("CNTP_TVAL_EL0", read_special_reg!("CNTFRQ_EL0") / 10)
+            }
+            _ => {}
         }
-        _ => {}
-    }
-    GICC.deactivate(iar);
+    });
 }
 
 #[panic_handler]

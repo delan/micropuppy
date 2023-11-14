@@ -86,15 +86,17 @@ impl CpuInterface {
         gicc.pmr.write_initial(|w| w.priority(0xff));
     }
 
-    /// Acknowledge an interrupt, returning the entire GICC_IAR, the cpuid, and the interrupt id.
-    pub fn acknowledge(&mut self) -> (u32, u8, InterruptId) {
+    /// Acknowledges an interrupt, handles it, and signals completion of interrupt processing.
+    ///
+    /// The cpuid and interrupt id read from GICC_IAR are provided to the handler closure.
+    pub fn handle(&mut self, handler: impl FnOnce(u8, InterruptId)) {
         let gicc = unsafe { &mut *self.0 };
-        gicc.iar.read(|r| (r.entire(), r.cpuid(), r.interrupt_id()))
-    }
+        let (iar, cpuid, interrupt_id) =
+            gicc.iar.read(|r| (r.entire(), r.cpuid(), r.interrupt_id()));
 
-    /// Deactivate an interrupt, given its entire GICC_IAR as recommended by the GICC_EOIR docs.
-    pub fn deactivate(&mut self, iar: u32) {
-        let mut gicc = unsafe { &mut *self.0 };
+        handler(cpuid, interrupt_id);
+
+        // Write back the entire GICC_IAR as recommended by the GICC_EOIR docs
         gicc.eoir.write_initial(|w| w.entire_iar(iar))
     }
 }
