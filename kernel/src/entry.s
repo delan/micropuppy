@@ -107,6 +107,9 @@ lower32_serror_vector:
 .align 7
 
 elx_irq_wrapper:
+    // TODO: since this is an exception vector, we have no guarantee that sp is 16-byte aligned.
+    // we'll either need to align it here, or ignore the problem until we have kernel or exception
+    // stacks
     sub sp, sp, #0x80
     str x0, [sp, #0x00]
     str x1, [sp, #0x04]
