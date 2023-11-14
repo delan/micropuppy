@@ -1,10 +1,10 @@
-.extern LD_STACK_PTR // defined in linker.ld
+.extern INITIAL_SP // defined in linker.ld
 .equ PSCI_SYSTEM_OFF, 0x84000008
 
 .section ".text.startup"
 .globl _start
 _start:
-    ldr x30, =LD_STACK_PTR
+    ldr x30, =INITIAL_SP
     mov sp, x30
     bl kernel_main
 

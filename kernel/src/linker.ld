@@ -14,9 +14,11 @@ SECTIONS
     .rodata : { *(.rodata*) }
     .bss : { *(.bss*) }
 
-    . = ALIGN(8);
-    . = . + 0x4000;
-    LD_STACK_PTR = .;
+    /* sp must be aligned to 16 bytes at a public interface or when used to access memory */
+    .stack ALIGN(16) (NOLOAD) : {
+        . = . + 0x4000;
+        INITIAL_SP = .;
+    }
 
     /* Debugging: DWARF */
     .debug_abbrev : { *(.debug_abbrev) }
