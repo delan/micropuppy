@@ -22,7 +22,7 @@ use crate::reg::system::Register as SystemRegister;
 global_asm!(include_str!("entry.s"), options(raw));
 
 extern "C" {
-    fn vectors();
+    static VECTORS: [u8; 0x800];
 }
 
 macro_rules! dbg {
@@ -159,7 +159,7 @@ pub extern "C" fn kernel_main() {
 
     unsafe {
         // set up vector table base address
-        asm!("msr VBAR_EL1, {}", in(reg) vectors);
+        asm!("msr VBAR_EL1, {}", in(reg) &VECTORS);
     }
 
     // unmask interrupts

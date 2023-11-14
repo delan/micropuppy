@@ -12,9 +12,6 @@ _start:
     hvc #0
 
 .section ".text.vectors"
-
-.globl vectors
-vectors:
 el0_synchronous_vector:
     mov w0, #'.'
     mov x1, #0x9000000
