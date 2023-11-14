@@ -1,11 +1,7 @@
 [workspace]
 resolver = "2"
-members = [
-    "kernel"
-]
-exclude = [
-    "runner"
-]
+members = ["kernel"]
+exclude = ["runner"]
 
 [profile.dev]
 # opt-level = 1

@@ -1,4 +1,7 @@
 {
     "rust-analyzer.check.allTargets": false,
-    "rust-analyzer.check.targets": ["aarch64-unknown-none"]
+    "rust-analyzer.check.targets": [
+        "aarch64-unknown-none"
+    ],
+    "editor.formatOnSave": true
 }

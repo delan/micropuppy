@@ -12,9 +12,6 @@
     "max-atomic-width": 128,
     "panic-strategy": "abort",
     "relocation-model": "static",
-    "supported-sanitizers": [
-        "kcfi",
-        "kernel-address"
-    ],
+    "supported-sanitizers": ["kcfi", "kernel-address"],
     "target-pointer-width": "64"
 }

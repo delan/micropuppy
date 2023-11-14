@@ -61,7 +61,9 @@ unsafe extern "C" fn elx_irq() {
     let (iar, cpuid, interrupt_id) = GICC.acknowledge();
     log::trace!("elx_irq iar = {iar}, cpuid = {cpuid}, interrupt_id = {interrupt_id:?}");
     match interrupt_id {
-        x if x == TIMER_INTERRUPT => write_special_reg!("CNTP_TVAL_EL0", read_special_reg!("CNTFRQ_EL0") / 10),
+        x if x == TIMER_INTERRUPT => {
+            write_special_reg!("CNTP_TVAL_EL0", read_special_reg!("CNTFRQ_EL0") / 10)
+        }
         _ => {}
     }
     GICC.deactivate(iar);
