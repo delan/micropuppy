@@ -1,6 +1,6 @@
 use crate::gicv2::InterruptId;
 use crate::memory_mapped_register as reg;
-use crate::num::as_usize;
+use crate::num::AsUsize;
 use crate::reg::memory_mapped::{PaddingBytes, Register};
 use crate::reg::prelude::*;
 
@@ -162,7 +162,7 @@ impl RegisterReader<GICC_IAR> {
         self.field(10..=12) as _
     }
     pub fn interrupt_id(&self) -> InterruptId {
-        as_usize(self.field(0..=9)).try_into().unwrap()
+        self.field(0..=9).as_usize().try_into().unwrap()
     }
 }
 

@@ -2,7 +2,7 @@ use byteorder::{BigEndian, ByteOrder};
 
 use crate::{
     a53::gicv2::{CpuInterfaceRegisterBlock, DistributorRegisterBlock},
-    num::as_usize,
+    num::AsUsize,
 };
 
 macro_rules! bounds_checked {
@@ -128,8 +128,8 @@ impl InterruptSpecifier<'_> {
         let interrupt_type = BigEndian::read_u32(&self.0[0..]);
         let interrupt_number = BigEndian::read_u32(&self.0[4..]);
         match interrupt_type {
-            0 => Ok(SpiNumber::try_from(as_usize(interrupt_number))?.into()),
-            1 => Ok(PpiNumber::try_from(as_usize(interrupt_number))?.into()),
+            0 => Ok(SpiNumber::try_from(interrupt_number.as_usize())?.into()),
+            1 => Ok(PpiNumber::try_from(interrupt_number.as_usize())?.into()),
             _ => panic!(),
         }
     }
