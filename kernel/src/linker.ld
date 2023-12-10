@@ -28,6 +28,14 @@ SECTIONS
         . = . + 0x4000;
         INITIAL_SP = .;
     }
+    .task1 ALIGN(16) (NOLOAD) : {
+        . = . + 0x4000;
+        TASK1_INITIAL_SP = .;
+    }
+    .task2 ALIGN(16) (NOLOAD) : {
+        . = . + 0x4000;
+        TASK2_INITIAL_SP = .;
+    }
 
     /* Debugging: DWARF */
     .debug_abbrev : { *(.debug_abbrev) }

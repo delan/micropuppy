@@ -8,5 +8,7 @@ edition = "2021"
 [dependencies]
 byteorder = { version = "1.5.0", default-features = false }
 fdt = "0.1.5"
+generic_once_cell = "0.1.1"
+lock_api = "0.4.11"
 log = "0.4.20"
 vcell = "0.1.3"

@@ -3,28 +3,6 @@
 #![feature(panic_info_message)]
 #![deny(clippy::undocumented_unsafe_blocks)]
 
-mod a53;
-mod gicv2;
-mod logging;
-mod num;
-mod reg;
-
-use core::arch::{asm, global_asm};
-use core::fmt::Write;
-use core::panic::PanicInfo;
-use core::ptr::null;
-
-use crate::a53::daif::DAIF;
-use crate::gicv2::InterruptId;
-use crate::logging::Pl011Writer;
-use crate::reg::system::Register as SystemRegister;
-
-global_asm!(include_str!("entry.s"), options(raw));
-
-extern "C" {
-    static VECTORS: [u8; 0x800];
-}
-
 macro_rules! dbg {
     ($value:expr) => {{
         let value = $value;
@@ -37,7 +15,7 @@ macro_rules! read_special_reg {
     ($special:literal) => {{
         let result: u64;
         unsafe {
-            asm!(concat!("mrs {}, ", $special), out(reg) result);
+            ::core::arch::asm!(concat!("mrs {}, ", $special), out(reg) result);
         }
         result
     }};
@@ -46,27 +24,66 @@ macro_rules! read_special_reg {
 macro_rules! write_special_reg {
     ($special:literal, $value:expr) => {{
         unsafe {
-            asm!(concat!("msr ", $special, ", {}"), in(reg) $value);
+            ::core::arch::asm!(concat!("msr ", $special, ", {}"), in(reg) $value);
         }
     }};
+}
+
+mod a53;
+mod gicv2;
+mod logging;
+mod num;
+mod reg;
+mod sync;
+mod task;
+
+use core::arch::{asm, global_asm};
+use core::fmt::Write;
+use core::panic::PanicInfo;
+use core::ptr::null;
+
+use task::Scheduler;
+
+use crate::a53::daif::DAIF;
+use crate::gicv2::InterruptId;
+use crate::logging::Pl011Writer;
+use crate::reg::system::Register as SystemRegister;
+use crate::sync::OnceCell;
+
+global_asm!(include_str!("entry.s"), options(raw));
+
+extern "C" {
+    static VECTORS: [u8; 0x800];
 }
 
 // TODO starting with the incorrect values seems bad, is this bad?
 static mut TIMER_INTERRUPT: InterruptId = InterruptId::spurious();
 static mut GICD: gicv2::Distributor = gicv2::Distributor::new(null());
 static mut GICC: gicv2::CpuInterface = gicv2::CpuInterface::new(null());
+static mut SCHEDULER: OnceCell<Scheduler> = OnceCell::new();
 
 #[no_mangle]
 unsafe extern "C" fn elx_irq() {
+    let mut run_scheduler = false;
     GICC.handle(|cpuid, interrupt_id| {
         log::trace!("elx_irq cpuid = {cpuid}, interrupt_id = {interrupt_id:?}");
         match interrupt_id {
             x if x == TIMER_INTERRUPT => {
-                write_special_reg!("CNTP_TVAL_EL0", read_special_reg!("CNTFRQ_EL0") / 10)
+                write_special_reg!("CNTP_TVAL_EL0", read_special_reg!("CNTFRQ_EL0") / 10);
+                run_scheduler = true;
             }
             _ => {}
         }
     });
+    if run_scheduler {
+        if let Some(scheduler) = SCHEDULER.get_mut() {
+            if let Some(task) = scheduler.current_task() {
+                scheduler.save();
+                log::debug!("Saved task {task}: {:?}", scheduler.get(task));
+            }
+            scheduler.run();
+        }
+    }
 }
 
 #[panic_handler]
@@ -160,6 +177,8 @@ pub extern "C" fn kernel_main() {
     unsafe {
         // set up vector table base address
         asm!("msr VBAR_EL1, {}", in(reg) &VECTORS);
+
+        SCHEDULER.get_or_init(|| Scheduler::new());
     }
 
     // unmask interrupts

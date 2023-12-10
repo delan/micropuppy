@@ -37,9 +37,24 @@ el0_serror_vector:
     eret
 .align 7
 elx_synchronous_vector:
-    mov w0, #'+'
     mov x1, #0x9000000
+    mov w0, #'\n'
     strb w0, [x1]
+    mov w0, #'E'
+    strb w0, [x1]
+    mov w0, #'L'
+    strb w0, [x1]
+    mov w0, #'x'
+    strb w0, [x1]
+    mov w0, #'S'
+    strb w0, [x1]
+    mov w0, #'E'
+    strb w0, [x1]
+    mov w0, #'!'
+    strb w0, [x1]
+    mov w0, #'\n'
+    strb w0, [x1]
+    b .
     eret
 .align 7
 elx_irq_vector:
@@ -110,6 +125,9 @@ elx_irq_wrapper:
     // TODO: since this is an exception vector, we have no guarantee that sp is 16-byte aligned.
     // we'll either need to align it here, or ignore the problem until we have kernel or exception
     // stacks
+    msr SPSel, #1
+    ldr x30, =INITIAL_SP
+    mov sp, x30
     sub sp, sp, #0x80
     str x0, [sp, #0x00]
     str x1, [sp, #0x04]
