@@ -13,23 +13,16 @@ pub struct Scheduler {
 
 #[derive(Debug)]
 pub struct Task {
-    program_counter: *const u8,
-    stack_pointer: *const u8,
-    n: bool,
-    z: bool,
-    c: bool,
-    v: bool,
+    program_counter: u64,
+    stack_pointer: u64,
+    pstate: u64,
 }
 
 impl Scheduler {
     pub fn new() -> Self {
         let tasks = [
-            Task::new(task1 as *const _, unsafe {
-                &TASK1_INITIAL_SP as *const _ as *const _
-            }),
-            Task::new(task2 as *const _, unsafe {
-                &TASK2_INITIAL_SP as *const _ as *const _
-            }),
+            Task::new(task1 as *const _, unsafe { &TASK1_INITIAL_SP as *const _ }),
+            Task::new(task2 as *const _, unsafe { &TASK2_INITIAL_SP as *const _ }),
         ];
         Self {
             tasks,
@@ -53,16 +46,9 @@ impl Scheduler {
     pub fn save(&mut self) {
         let task = self.current.take().expect("No current task!");
         let task = self.get_mut(task).expect("No such task!");
-        task.program_counter = read_special_reg!("ELR_EL1") as *const _;
-        task.stack_pointer = read_special_reg!("SP_EL0") as *const _;
-        let spsr = SystemRegister::<SPSR_EL1>::new();
-        spsr.read(|r| {
-            task.n = r.n();
-            task.z = r.z();
-            task.c = r.c();
-            task.v = r.v();
-            ()
-        });
+        task.program_counter = read_special_reg!("ELR_EL1");
+        task.stack_pointer = read_special_reg!("SP_EL0");
+        task.pstate = read_special_reg!("SPSR_EL1");
     }
 
     pub fn run(&mut self) -> ! {
@@ -74,22 +60,10 @@ impl Scheduler {
         self.next = NonZeroUsize::new(task.get() % self.tasks.len() + 1);
         let task = self.get(task).expect("No such task!");
 
-        // Load the PSTATE fields that are accessible at EL0 per R(LDXKJ):
-        // N, Z, C, V, (TODO) SSBS, DIT, TCO.
-        let nzcv = SystemRegister::<NZCV>::new();
-        unsafe {
-            nzcv.write_zero(|w| {
-                w.n(task.n);
-                w.z(task.z);
-                w.c(task.c);
-                w.v(task.v);
-            });
-        }
-
-        // Load the stack pointer and return from exception.
+        write_special_reg!("ELR_EL1", task.program_counter);
+        write_special_reg!("SPSR_EL1", task.pstate);
         write_special_reg!("SP_EL0", task.stack_pointer);
         write_special_reg!("SPSel", 0);
-        write_special_reg!("ELR_EL1", task.program_counter);
         unsafe {
             asm!("eret");
         }
@@ -98,14 +72,11 @@ impl Scheduler {
 }
 
 impl Task {
-    fn new(initial_pc: *const u8, initial_sp: *const u8) -> Self {
+    fn new(initial_pc: *const (), initial_sp: *const ()) -> Self {
         Self {
-            program_counter: initial_pc,
-            stack_pointer: initial_sp,
-            n: false,
-            z: false,
-            c: false,
-            v: false,
+            program_counter: initial_pc as u64,
+            stack_pointer: initial_sp as u64,
+            pstate: 0,
         }
     }
 }

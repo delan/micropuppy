@@ -13,26 +13,34 @@ _start:
 
 .section ".text.vectors"
 el0_synchronous_vector:
-    mov w0, #'.'
     mov x1, #0x9000000
+    mov w0, #'!'
+    strb w0, [x1]
+    mov w0, #'A'
     strb w0, [x1]
     eret
 .align 7
 el0_irq_vector:
-    mov w0, #'.'
     mov x1, #0x9000000
+    mov w0, #'!'
+    strb w0, [x1]
+    mov w0, #'B'
     strb w0, [x1]
     eret
 .align 7
 el0_fiq_vector:
-    mov w0, #'.'
     mov x1, #0x9000000
+    mov w0, #'!'
+    strb w0, [x1]
+    mov w0, #'C'
     strb w0, [x1]
     eret
 .align 7
 el0_serror_vector:
-    mov w0, #'.'
     mov x1, #0x9000000
+    mov w0, #'!'
+    strb w0, [x1]
+    mov w0, #'D'
     strb w0, [x1]
     eret
 .align 7
@@ -61,62 +69,77 @@ elx_irq_vector:
     b elx_irq_wrapper
 .align 7
 elx_fiq_vector:
-    mov w0, #'.'
     mov x1, #0x9000000
+    mov w0, #'!'
+    strb w0, [x1]
+    mov w0, #'G'
     strb w0, [x1]
     eret
 .align 7
 elx_serror_vector:
-    mov w0, #'.'
     mov x1, #0x9000000
+    mov w0, #'!'
+    strb w0, [x1]
+    mov w0, #'H'
     strb w0, [x1]
     eret
 .align 7
 lower64_synchronous_vector:
-    mov w0, #'.'
     mov x1, #0x9000000
+    mov w0, #'!'
+    strb w0, [x1]
+    mov w0, #'I'
     strb w0, [x1]
     eret
 .align 7
 lower64_irq_vector:
-    mov w0, #'.'
-    mov x1, #0x9000000
-    strb w0, [x1]
-    eret
+    b lower64_irq_wrapper
 .align 7
 lower64_fiq_vector:
-    mov w0, #'.'
     mov x1, #0x9000000
+    mov w0, #'!'
+    strb w0, [x1]
+    mov w0, #'K'
     strb w0, [x1]
     eret
 .align 7
 lower64_serror_vector:
-    mov w0, #'.'
     mov x1, #0x9000000
+    mov w0, #'!'
+    strb w0, [x1]
+    mov w0, #'L'
     strb w0, [x1]
     eret
 .align 7
 lower32_synchronous_vector:
-    mov w0, #'.'
     mov x1, #0x9000000
+    mov w0, #'!'
+    strb w0, [x1]
+    mov w0, #'M'
     strb w0, [x1]
     eret
 .align 7
 lower32_irq_vector:
-    mov w0, #'.'
     mov x1, #0x9000000
+    mov w0, #'!'
+    strb w0, [x1]
+    mov w0, #'N'
     strb w0, [x1]
     eret
 .align 7
 lower32_fiq_vector:
-    mov w0, #'.'
     mov x1, #0x9000000
+    mov w0, #'!'
+    strb w0, [x1]
+    mov w0, #'O'
     strb w0, [x1]
     eret
 .align 7
 lower32_serror_vector:
-    mov w0, #'.'
     mov x1, #0x9000000
+    mov w0, #'!'
+    strb w0, [x1]
+    mov w0, #'P'
     strb w0, [x1]
     eret
 .align 7
@@ -196,3 +219,6 @@ elx_irq_wrapper:
     ldr x31, [sp, #0x7C]
     add sp, sp, #0x80
     eret
+
+lower64_irq_wrapper:
+    b elx_irq_wrapper
