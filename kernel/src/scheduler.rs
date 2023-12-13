@@ -2,7 +2,7 @@ use crate::task::{Context, Task};
 
 pub struct Scheduler {
     tasks: [Task; 2],
-    idx: usize,
+    current_index: usize,
 }
 
 impl Scheduler {
@@ -23,19 +23,19 @@ impl Scheduler {
 
         Self {
             tasks: [task1, task2],
-            idx: 0,
+            current_index: 0,
         }
     }
 
     pub fn schedule(&mut self) -> &Task {
-        self.idx += 1;
-        self.idx %= 4;
+        self.current_index += 1;
+        self.current_index %= 4;
 
-        &self.tasks[self.idx >> 1]
+        &self.tasks[self.current_index >> 1]
     }
 
     pub fn start(&mut self) -> ! {
-        self.tasks[self.idx >> 1].start();
+        self.tasks[self.current_index >> 1].start();
     }
 }
 
@@ -44,7 +44,7 @@ fn task1() {
 
     loop {
         log::trace!("task1");
-        for _ in 0..1000000 {}
+        for _ in 0..500000 {}
     }
 }
 

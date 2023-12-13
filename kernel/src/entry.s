@@ -12,9 +12,9 @@ _start:
     hvc #0
 
 .section ".text.vectors"
-
+// **These macros MUST be kept in sync with the `Context` struct defined in `task.rs`.**
 .macro task_save
-    // save task general-purpose registers
+    // GPRs => context.gprs
     sub sp, sp, #0x120
     stp x0, x1, [sp, #0x00]
     stp x2, x3, [sp, #0x10]
@@ -33,27 +33,29 @@ _start:
     stp x28, x29, [sp, #0xe0]
     stp x30, x31, [sp, #0xf0]
 
-    // save task PC and SP
+    // PC => context.pc
+    // SP => context.sp
     mrs x0, ELR_EL1
     mrs x1, SP_EL0
     stp x0, x1, [sp, #0x100]
 
-    // save task PSTATE (SPSR - saved PSR)
+    // PSTATE => context.psr
     mrs x0, SPSR_EL1
     str x0, [sp, #0x110]
 .endm
 
 .macro task_restore
-    // restore task PSTATE
+    // context.psr => PSTATE
     ldr x0, [sp, #0x110]
     msr SPSR_EL1, x0
 
-    // restore task PC and SP
+    // context.sp => SP
+    // context.pc => PC
     ldp x0, x1, [sp, #0x100]
     msr SP_EL0, x1
     msr ELR_EL1, x0
 
-    // restore task general-purpose registers
+    // context.gprs => GPRs
     ldp x30, x31, [sp, #0xf0]
     ldp x28, x29, [sp, #0xe0]
     ldp x26, x27, [sp, #0xd0]

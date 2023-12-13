@@ -30,11 +30,14 @@ impl Task {
 }
 
 /// The processor state of a task, saved and restored on context switches.
+///
+/// **This struct MUST be kept in sync with the `task_save` and `task_restore` macros defined in
+/// `entry.s`.**
 #[derive(Debug)]
 #[repr(C)]
 pub struct Context {
     /// General-purpose registers `x0` through `x31`.
-    x: [u64; 32],
+    gprs: [u64; 32],
     /// The program counter, from `ELR_EL1`.
     pc: *const (),
     /// The stack pointer, from `SP_EL0`.
@@ -46,7 +49,7 @@ pub struct Context {
 impl Context {
     pub fn new(initial_pc: *const (), initial_sp: *const ()) -> Self {
         Self {
-            x: [0; 32],
+            gprs: [0; 32],
             pc: initial_pc,
             psr: 0,
             sp: initial_sp,
