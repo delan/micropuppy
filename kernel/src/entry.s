@@ -12,6 +12,32 @@ _start:
     hvc #0
 
 .section ".text.vectors"
+.macro define_vector_trampoline, addr:req, source:req, type:req
+    .org \addr
+    vector_\source\()_\type\()_trampoline:
+        b vector_\source\()_\type\()_wrapper
+.endm
+
+define_vector_trampoline 0x000, el0, synchronous
+define_vector_trampoline 0x080, el0, irq
+define_vector_trampoline 0x100, el0, fiq
+define_vector_trampoline 0x180, el0, serror
+
+define_vector_trampoline 0x200, elx, synchronous
+define_vector_trampoline 0x280, elx, irq
+define_vector_trampoline 0x300, elx, fiq
+define_vector_trampoline 0x380, elx, serror
+
+define_vector_trampoline 0x400, lower64, synchronous
+define_vector_trampoline 0x480, lower64, irq
+define_vector_trampoline 0x500, lower64, fiq
+define_vector_trampoline 0x580, lower64, serror
+
+define_vector_trampoline 0x600, lower32, synchronous
+define_vector_trampoline 0x680, lower32, irq
+define_vector_trampoline 0x700, lower32, fiq
+define_vector_trampoline 0x780, lower32, serror
+
 // **These macros MUST be kept in sync with the `Context` struct defined in `task.rs`.**
 .macro task_save
     // GPRs => context.gprs
@@ -76,166 +102,42 @@ _start:
     add sp, sp, #0x120
 .endm
 
-.align 7
-el0_synchronous_vector:
-    mov x1, #0x9000000
-    mov w0, #'!'
-    strb w0, [x1]
-    mov w0, #'A'
-    strb w0, [x1]
-    eret
+.macro define_vector_stub, source:req, type:req
+    vector_\source\()_\type\()_wrapper:
+        eret
+.endm
 
-.align 7
-el0_irq_vector:
-    mov x1, #0x9000000
-    mov w0, #'!'
-    strb w0, [x1]
-    mov w0, #'B'
-    strb w0, [x1]
-    eret
+.macro define_vector_task, source:req, type:req
+    vector_\source\()_\type\()_wrapper:
+        task_save
+        mov x0, sp
 
-.align 7
-el0_fiq_vector:
-    mov x1, #0x9000000
-    mov w0, #'!'
-    strb w0, [x1]
-    mov w0, #'C'
-    strb w0, [x1]
-    eret
+        bl vector_\source\()_\type
 
-.align 7
-el0_serror_vector:
-    mov x1, #0x9000000
-    mov w0, #'!'
-    strb w0, [x1]
-    mov w0, #'D'
-    strb w0, [x1]
-    eret
+        mov sp, x0
+        task_restore
+        eret
+.endm
 
-.align 7
-elx_synchronous_vector:
-    mov x1, #0x9000000
-    mov w0, #'\n'
-    strb w0, [x1]
-    mov w0, #'E'
-    strb w0, [x1]
-    mov w0, #'L'
-    strb w0, [x1]
-    mov w0, #'x'
-    strb w0, [x1]
-    mov w0, #'S'
-    strb w0, [x1]
-    mov w0, #'E'
-    strb w0, [x1]
-    mov w0, #'!'
-    strb w0, [x1]
-    mov w0, #'\n'
-    strb w0, [x1]
-    b .
-    eret
+define_vector_stub el0, synchronous
+define_vector_stub el0, irq
+define_vector_stub el0, fiq
+define_vector_stub el0, serror
 
-.align 7
-elx_irq_vector:
-    b elx_irq_wrapper
+define_vector_stub elx, synchronous
+define_vector_stub elx, irq
+define_vector_stub elx, fiq
+define_vector_stub elx, serror
 
-.align 7
-elx_fiq_vector:
-    mov x1, #0x9000000
-    mov w0, #'!'
-    strb w0, [x1]
-    mov w0, #'G'
-    strb w0, [x1]
-    eret
+define_vector_task lower64, synchronous
+define_vector_task lower64, irq
+define_vector_task lower64, fiq
+define_vector_task lower64, serror
 
-.align 7
-elx_serror_vector:
-    mov x1, #0x9000000
-    mov w0, #'!'
-    strb w0, [x1]
-    mov w0, #'H'
-    strb w0, [x1]
-    eret
-
-.align 7
-lower64_synchronous_vector:
-    mov x1, #0x9000000
-    mov w0, #'!'
-    strb w0, [x1]
-    mov w0, #'I'
-    strb w0, [x1]
-    eret
-
-.align 7
-lower64_irq_vector:
-    b lower64_irq_wrapper
-
-.align 7
-lower64_fiq_vector:
-    mov x1, #0x9000000
-    mov w0, #'!'
-    strb w0, [x1]
-    mov w0, #'K'
-    strb w0, [x1]
-    eret
-
-.align 7
-lower64_serror_vector:
-    mov x1, #0x9000000
-    mov w0, #'!'
-    strb w0, [x1]
-    mov w0, #'L'
-    strb w0, [x1]
-    eret
-
-.align 7
-lower32_synchronous_vector:
-    mov x1, #0x9000000
-    mov w0, #'!'
-    strb w0, [x1]
-    mov w0, #'M'
-    strb w0, [x1]
-    eret
-
-.align 7
-lower32_irq_vector:
-    mov x1, #0x9000000
-    mov w0, #'!'
-    strb w0, [x1]
-    mov w0, #'N'
-    strb w0, [x1]
-    eret
-
-.align 7
-lower32_fiq_vector:
-    mov x1, #0x9000000
-    mov w0, #'!'
-    strb w0, [x1]
-    mov w0, #'O'
-    strb w0, [x1]
-    eret
-
-.align 7
-lower32_serror_vector:
-    mov x1, #0x9000000
-    mov w0, #'!'
-    strb w0, [x1]
-    mov w0, #'P'
-    strb w0, [x1]
-    eret
-
-.align 7
-elx_irq_wrapper:
-    task_save
-    mov x0, sp
-
-    bl elx_irq
-
-    mov sp, x0
-    task_restore
-    eret
-
-lower64_irq_wrapper:
-    b elx_irq_wrapper
+define_vector_stub lower32, synchronous
+define_vector_stub lower32, irq
+define_vector_stub lower32, fiq
+define_vector_stub lower32, serror
 
 .global task_start
 task_start:

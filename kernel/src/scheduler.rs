@@ -54,5 +54,6 @@ fn task2() {
     loop {
         log::trace!("task2");
         for _ in 0..1000000 {}
+        unsafe { core::arch::asm!("svc #0") }
     }
 }

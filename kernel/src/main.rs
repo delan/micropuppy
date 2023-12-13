@@ -65,7 +65,72 @@ static mut GICC: gicv2::CpuInterface = gicv2::CpuInterface::new(null());
 static mut SCHEDULER: OnceCell<Scheduler> = OnceCell::new();
 
 #[no_mangle]
-unsafe extern "C" fn elx_irq(mut context: *const Context) -> *const Context {
+unsafe extern "C" fn vector_el0_synchronous(context: *const Context) -> *const Context {
+    log::trace!("vector_el0_synchronous");
+
+    context
+}
+
+#[no_mangle]
+unsafe extern "C" fn vector_el0_irq(context: *const Context) -> *const Context {
+    log::trace!("vector_el0_irq");
+
+    context
+}
+
+#[no_mangle]
+unsafe extern "C" fn vector_el0_fiq(context: *const Context) -> *const Context {
+    log::trace!("vector_el0_fiq");
+
+    context
+}
+
+#[no_mangle]
+unsafe extern "C" fn vector_el0_serror(context: *const Context) -> *const Context {
+    log::trace!("vector_el0_serror");
+
+    context
+}
+
+#[no_mangle]
+unsafe extern "C" fn vector_elx_synchronous(context: *const Context) -> *const Context {
+    log::trace!("vector_elx_synchronous");
+
+    context
+}
+
+#[no_mangle]
+unsafe extern "C" fn vector_elx_irq(context: *const Context) -> *const Context {
+    log::trace!("vector_elx_irq");
+
+    context
+}
+
+#[no_mangle]
+unsafe extern "C" fn vector_elx_fiq(context: *const Context) -> *const Context {
+    log::trace!("vector_elx_fiq");
+
+    context
+}
+
+#[no_mangle]
+unsafe extern "C" fn vector_elx_serror(context: *const Context) -> *const Context {
+    log::trace!("vector_elx_serror");
+
+    context
+}
+
+#[no_mangle]
+unsafe extern "C" fn vector_lower64_synchronous(context: *const Context) -> *const Context {
+    log::trace!("vector_lower64_synchronous");
+
+    context
+}
+
+#[no_mangle]
+unsafe extern "C" fn vector_lower64_irq(mut context: *const Context) -> *const Context {
+    log::trace!("vector_lower64_irq");
+
     GICC.handle(|cpuid, interrupt_id| {
         log::trace!("elx_irq cpuid = {cpuid}, interrupt_id = {interrupt_id:?}");
         match interrupt_id {
@@ -79,6 +144,48 @@ unsafe extern "C" fn elx_irq(mut context: *const Context) -> *const Context {
             _ => {}
         }
     });
+
+    context
+}
+
+#[no_mangle]
+unsafe extern "C" fn vector_lower64_fiq(context: *const Context) -> *const Context {
+    log::trace!("vector_lower64_fiq");
+
+    context
+}
+
+#[no_mangle]
+unsafe extern "C" fn vector_lower64_serror(context: *const Context) -> *const Context {
+    log::trace!("vector_lower64_serror");
+
+    context
+}
+
+#[no_mangle]
+unsafe extern "C" fn vector_lower32_synchronous(context: *const Context) -> *const Context {
+    log::trace!("vector_lower32_synchronous");
+
+    context
+}
+
+#[no_mangle]
+unsafe extern "C" fn vector_lower32_irq(context: *const Context) -> *const Context {
+    log::trace!("vector_lower32_irq");
+
+    context
+}
+
+#[no_mangle]
+unsafe extern "C" fn vector_lower32_fiq(context: *const Context) -> *const Context {
+    log::trace!("vector_lower32_fiq");
+
+    context
+}
+
+#[no_mangle]
+unsafe extern "C" fn vector_lower32_serror(context: *const Context) -> *const Context {
+    log::trace!("vector_lower32_serror");
 
     context
 }
