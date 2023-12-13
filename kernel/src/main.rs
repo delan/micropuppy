@@ -117,6 +117,7 @@ unsafe extern "C" fn vector_el0_a64_synchronous(_context: *const Context) -> *co
 #[no_mangle]
 unsafe extern "C" fn vector_el0_a64_irq(mut context: *const Context) -> *const Context {
     log::trace!("vector_el0_a64_irq");
+    log::debug!("{:?}", *context);
 
     GICC.handle(|cpuid, interrupt_id| {
         log::trace!("elx_irq cpuid = {cpuid}, interrupt_id = {interrupt_id:?}");

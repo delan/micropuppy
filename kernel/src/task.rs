@@ -1,3 +1,5 @@
+use core::fmt;
+
 #[derive(Debug)]
 pub struct Task {
     /// Pointer to the bottom of the task's kernel stack.
@@ -33,7 +35,6 @@ impl Task {
 ///
 /// **This struct MUST be kept in sync with the `task_save` and `task_restore` macros defined in
 /// `entry.s`.**
-#[derive(Debug)]
 #[repr(C)]
 pub struct Context {
     /// General-purpose registers `x0` through `x31`.
@@ -62,5 +63,34 @@ impl Context {
 
     fn from_sp_el1_mut(sp_el1: *mut ()) -> *mut Context {
         unsafe { (sp_el1 as *mut Context).sub(1) }
+    }
+}
+
+impl fmt::Debug for Context {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        writeln!(f, "Context {{")?;
+
+        for pair in 0..16 {
+            let index0 = 2 * pair;
+            let space0 = if index0 < 10 { " " } else { "" };
+            write!(f, "    {}x{}: {:#018x},", space0, index0, self.gprs[index0])?;
+
+            let index1 = 2 * pair + 1;
+            let space1 = if index1 < 10 { " " } else { "" };
+            writeln!(f, " {}x{}: {:#018x},", space1, index1, self.gprs[index1])?;
+        }
+
+        writeln!(
+            f,
+            "     pc: {:#018x},  sp: {:#018x},",
+            self.pc as usize, self.sp as usize
+        )?;
+
+        // TODO: decode important fields and display them alongside the PSR
+        writeln!(f, "    psr: {:#018x},", self.psr)?;
+
+        writeln!(f, "}}")?;
+
+        Ok(())
     }
 }
