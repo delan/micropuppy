@@ -67,6 +67,7 @@ static mut SCHEDULER: OnceCell<Scheduler> = OnceCell::new();
 #[no_mangle]
 unsafe extern "C" fn vector_el0_synchronous(context: *const Context) -> *const Context {
     log::trace!("vector_el0_synchronous");
+    panic_on_synchronous_or_serror(b'A');
 
     context
 }
@@ -88,6 +89,7 @@ unsafe extern "C" fn vector_el0_fiq(context: *const Context) -> *const Context {
 #[no_mangle]
 unsafe extern "C" fn vector_el0_serror(context: *const Context) -> *const Context {
     log::trace!("vector_el0_serror");
+    panic_on_synchronous_or_serror(b'D');
 
     context
 }
@@ -95,6 +97,7 @@ unsafe extern "C" fn vector_el0_serror(context: *const Context) -> *const Contex
 #[no_mangle]
 unsafe extern "C" fn vector_elx_synchronous(context: *const Context) -> *const Context {
     log::trace!("vector_elx_synchronous");
+    panic_on_synchronous_or_serror(b'E');
 
     context
 }
@@ -116,6 +119,7 @@ unsafe extern "C" fn vector_elx_fiq(context: *const Context) -> *const Context {
 #[no_mangle]
 unsafe extern "C" fn vector_elx_serror(context: *const Context) -> *const Context {
     log::trace!("vector_elx_serror");
+    panic_on_synchronous_or_serror(b'H');
 
     context
 }
@@ -123,6 +127,7 @@ unsafe extern "C" fn vector_elx_serror(context: *const Context) -> *const Contex
 #[no_mangle]
 unsafe extern "C" fn vector_lower64_synchronous(context: *const Context) -> *const Context {
     log::trace!("vector_lower64_synchronous");
+    panic_on_synchronous_or_serror(b'I');
 
     context
 }
@@ -158,6 +163,7 @@ unsafe extern "C" fn vector_lower64_fiq(context: *const Context) -> *const Conte
 #[no_mangle]
 unsafe extern "C" fn vector_lower64_serror(context: *const Context) -> *const Context {
     log::trace!("vector_lower64_serror");
+    panic_on_synchronous_or_serror(b'L');
 
     context
 }
@@ -165,6 +171,7 @@ unsafe extern "C" fn vector_lower64_serror(context: *const Context) -> *const Co
 #[no_mangle]
 unsafe extern "C" fn vector_lower32_synchronous(context: *const Context) -> *const Context {
     log::trace!("vector_lower32_synchronous");
+    panic_on_synchronous_or_serror(b'M');
 
     context
 }
@@ -186,8 +193,42 @@ unsafe extern "C" fn vector_lower32_fiq(context: *const Context) -> *const Conte
 #[no_mangle]
 unsafe extern "C" fn vector_lower32_serror(context: *const Context) -> *const Context {
     log::trace!("vector_lower32_serror");
+    panic_on_synchronous_or_serror(b'P');
 
     context
+}
+
+fn panic_on_synchronous_or_serror(kind: u8) -> ! {
+    // TODO get rid of these kind codes, no need to call this from asm
+    let (syndrome, kind) = match kind {
+        b'A' => unimplemented!(), // synchronous, EL0 (there is no ESR_EL0)
+        b'D' => unimplemented!(), // SError, EL0 (there is no ESR_EL0)
+        b'E' => (read_special_reg!("ESR_EL1"), "synchronous, ELx"),
+        b'H' => (read_special_reg!("ESR_EL1"), "SError, ELx"),
+        b'I' => (read_special_reg!("ESR_EL1"), "synchronous, lower64"),
+        b'L' => (read_special_reg!("ESR_EL1"), "SError, lower64"),
+        b'M' => (read_special_reg!("ESR_EL1"), "synchronous, lower32"),
+        b'P' => (read_special_reg!("ESR_EL1"), "SError, lower32"),
+        _ => unreachable!(),
+    };
+    // TODO migrate to SystemRegister api
+    let exception_class = syndrome >> 26 & 0x3F;
+    let reason = match exception_class {
+        0x00 => Some("Unknown reason"),
+        0x15 => Some("SVC instruction execution in AArch64 state"),
+        _ => None,
+    };
+    if let Some(reason) = reason {
+        panic!(
+            "Exception ({}): {:016X}h\n    reason {:02X}h = {}",
+            kind, syndrome, exception_class, reason
+        );
+    } else {
+        panic!(
+            "Exception ({}): {:016X}h\n    reason {:02X}h",
+            kind, syndrome, exception_class
+        );
+    }
 }
 
 #[panic_handler]

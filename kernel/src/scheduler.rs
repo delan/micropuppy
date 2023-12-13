@@ -51,9 +51,13 @@ fn task1() {
 fn task2() {
     log::trace!("task2 start");
 
+    let mut x = 0;
     loop {
         log::trace!("task2");
         for _ in 0..1000000 {}
-        unsafe { core::arch::asm!("svc #0") }
+        x += 1;
+        if x > 10 {
+            unsafe { core::arch::asm!("svc #0") }
+        }
     }
 }
