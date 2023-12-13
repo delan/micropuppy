@@ -74,6 +74,7 @@ _start:
     add sp, sp, #0x120
 .endm
 
+.align 7
 el0_synchronous_vector:
     mov x1, #0x9000000
     mov w0, #'!'
@@ -234,9 +235,8 @@ elx_irq_wrapper:
 lower64_irq_wrapper:
     b elx_irq_wrapper
 
-
-.global scheduler_start
-scheduler_start:
+.global task_start
+task_start:
     mov sp, x0
     task_restore
     eret

@@ -34,6 +34,7 @@ mod gicv2;
 mod logging;
 mod num;
 mod reg;
+mod scheduler;
 mod sync;
 mod task;
 
@@ -42,7 +43,8 @@ use core::fmt::Write;
 use core::panic::PanicInfo;
 use core::ptr::null;
 
-use task::{Context, Scheduler, Task};
+use scheduler::Scheduler;
+use task::{Context, Task};
 
 use crate::a53::daif::DAIF;
 use crate::gicv2::InterruptId;
@@ -64,26 +66,19 @@ static mut SCHEDULER: OnceCell<Scheduler> = OnceCell::new();
 
 #[no_mangle]
 unsafe extern "C" fn elx_irq(mut context: *const Context) -> *const Context {
-    let mut run_scheduler = false;
     GICC.handle(|cpuid, interrupt_id| {
         log::trace!("elx_irq cpuid = {cpuid}, interrupt_id = {interrupt_id:?}");
         match interrupt_id {
             x if x == TIMER_INTERRUPT => {
                 write_special_reg!("CNTP_TVAL_EL0", read_special_reg!("CNTFRQ_EL0") / 10);
-                run_scheduler = true;
+
+                if let Some(scheduler) = SCHEDULER.get_mut() {
+                    context = scheduler.schedule().context();
+                }
             }
             _ => {}
         }
     });
-    if run_scheduler {
-        if let Some(scheduler) = SCHEDULER.get_mut() {
-            // if let Some(task) = scheduler.current_task() {
-            //     scheduler.save();
-            //     log::debug!("Saved task {task}: {:?}", scheduler.get(task));
-            // }
-            context = scheduler.do_your_work();
-        }
-    }
 
     context
 }
