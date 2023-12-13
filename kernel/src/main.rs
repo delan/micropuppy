@@ -65,76 +65,58 @@ static mut GICC: gicv2::CpuInterface = gicv2::CpuInterface::new(null());
 static mut SCHEDULER: OnceCell<Scheduler> = OnceCell::new();
 
 #[no_mangle]
-unsafe extern "C" fn vector_el0_synchronous(context: *const Context) -> *const Context {
-    log::trace!("vector_el0_synchronous");
+unsafe extern "C" fn vector_el1_sp0_synchronous() {
+    log::trace!("vector_el1_sp0_synchronous");
     panic_on_synchronous_or_serror(b'A');
-
-    context
 }
 
 #[no_mangle]
-unsafe extern "C" fn vector_el0_irq(context: *const Context) -> *const Context {
-    log::trace!("vector_el0_irq");
-
-    context
+unsafe extern "C" fn vector_el1_sp0_irq() {
+    log::trace!("vector_el1_sp0_irq");
 }
 
 #[no_mangle]
-unsafe extern "C" fn vector_el0_fiq(context: *const Context) -> *const Context {
-    log::trace!("vector_el0_fiq");
-
-    context
+unsafe extern "C" fn vector_el1_sp0_fiq() {
+    log::trace!("vector_el1_sp0_fiq");
 }
 
 #[no_mangle]
-unsafe extern "C" fn vector_el0_serror(context: *const Context) -> *const Context {
-    log::trace!("vector_el0_serror");
+unsafe extern "C" fn vector_el1_sp0_serror() {
+    log::trace!("vector_el1_sp0_serror");
     panic_on_synchronous_or_serror(b'D');
-
-    context
 }
 
 #[no_mangle]
-unsafe extern "C" fn vector_elx_synchronous(context: *const Context) -> *const Context {
-    log::trace!("vector_elx_synchronous");
+unsafe extern "C" fn vector_el1_sp1_synchronous() {
+    log::trace!("vector_el1_sp1_synchronous");
     panic_on_synchronous_or_serror(b'E');
-
-    context
 }
 
 #[no_mangle]
-unsafe extern "C" fn vector_elx_irq(context: *const Context) -> *const Context {
-    log::trace!("vector_elx_irq");
-
-    context
+unsafe extern "C" fn vector_el1_sp1_irq() {
+    log::trace!("vector_el1_sp1_irq");
 }
 
 #[no_mangle]
-unsafe extern "C" fn vector_elx_fiq(context: *const Context) -> *const Context {
-    log::trace!("vector_elx_fiq");
-
-    context
+unsafe extern "C" fn vector_el1_sp1_fiq() {
+    log::trace!("vector_el1_sp1_fiq");
 }
 
 #[no_mangle]
-unsafe extern "C" fn vector_elx_serror(context: *const Context) -> *const Context {
-    log::trace!("vector_elx_serror");
+unsafe extern "C" fn vector_el1_sp1_serror(_context: *const Context) -> *const Context {
+    log::trace!("vector_el1_sp1_serror");
     panic_on_synchronous_or_serror(b'H');
-
-    context
 }
 
 #[no_mangle]
-unsafe extern "C" fn vector_lower64_synchronous(context: *const Context) -> *const Context {
-    log::trace!("vector_lower64_synchronous");
+unsafe extern "C" fn vector_el0_a64_synchronous(_context: *const Context) -> *const Context {
+    log::trace!("vector_el0_a64_synchronous");
     panic_on_synchronous_or_serror(b'I');
-
-    context
 }
 
 #[no_mangle]
-unsafe extern "C" fn vector_lower64_irq(mut context: *const Context) -> *const Context {
-    log::trace!("vector_lower64_irq");
+unsafe extern "C" fn vector_el0_a64_irq(mut context: *const Context) -> *const Context {
+    log::trace!("vector_el0_a64_irq");
 
     GICC.handle(|cpuid, interrupt_id| {
         log::trace!("elx_irq cpuid = {cpuid}, interrupt_id = {interrupt_id:?}");
@@ -154,48 +136,38 @@ unsafe extern "C" fn vector_lower64_irq(mut context: *const Context) -> *const C
 }
 
 #[no_mangle]
-unsafe extern "C" fn vector_lower64_fiq(context: *const Context) -> *const Context {
-    log::trace!("vector_lower64_fiq");
+unsafe extern "C" fn vector_el0_a64_fiq(context: *const Context) -> *const Context {
+    log::trace!("vector_el0_a64_fiq");
 
     context
 }
 
 #[no_mangle]
-unsafe extern "C" fn vector_lower64_serror(context: *const Context) -> *const Context {
-    log::trace!("vector_lower64_serror");
+unsafe extern "C" fn vector_el0_a64_serror(_context: *const Context) -> *const Context {
+    log::trace!("vector_el0_a64_serror");
     panic_on_synchronous_or_serror(b'L');
-
-    context
 }
 
 #[no_mangle]
-unsafe extern "C" fn vector_lower32_synchronous(context: *const Context) -> *const Context {
-    log::trace!("vector_lower32_synchronous");
+unsafe extern "C" fn vector_el0_a32_synchronous() {
+    log::trace!("vector_el0_a32_synchronous");
     panic_on_synchronous_or_serror(b'M');
-
-    context
 }
 
 #[no_mangle]
-unsafe extern "C" fn vector_lower32_irq(context: *const Context) -> *const Context {
-    log::trace!("vector_lower32_irq");
-
-    context
+unsafe extern "C" fn vector_el0_a32_irq() {
+    log::trace!("vector_el0_a32_irq");
 }
 
 #[no_mangle]
-unsafe extern "C" fn vector_lower32_fiq(context: *const Context) -> *const Context {
-    log::trace!("vector_lower32_fiq");
-
-    context
+unsafe extern "C" fn vector_el0_a32_fiq() {
+    log::trace!("vector_el0_a32_fiq");
 }
 
 #[no_mangle]
-unsafe extern "C" fn vector_lower32_serror(context: *const Context) -> *const Context {
-    log::trace!("vector_lower32_serror");
+unsafe extern "C" fn vector_el0_a32_serror() {
+    log::trace!("vector_el0_a32_serror");
     panic_on_synchronous_or_serror(b'P');
-
-    context
 }
 
 fn panic_on_synchronous_or_serror(kind: u8) -> ! {

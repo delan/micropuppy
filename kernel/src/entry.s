@@ -18,25 +18,25 @@ _start:
         b vector_\source\()_\type\()_wrapper
 .endm
 
-define_vector_trampoline 0x000, el0, synchronous
-define_vector_trampoline 0x080, el0, irq
-define_vector_trampoline 0x100, el0, fiq
-define_vector_trampoline 0x180, el0, serror
+define_vector_trampoline 0x000, el1_sp0, synchronous
+define_vector_trampoline 0x080, el1_sp0, irq
+define_vector_trampoline 0x100, el1_sp0, fiq
+define_vector_trampoline 0x180, el1_sp0, serror
 
-define_vector_trampoline 0x200, elx, synchronous
-define_vector_trampoline 0x280, elx, irq
-define_vector_trampoline 0x300, elx, fiq
-define_vector_trampoline 0x380, elx, serror
+define_vector_trampoline 0x200, el1_sp1, synchronous
+define_vector_trampoline 0x280, el1_sp1, irq
+define_vector_trampoline 0x300, el1_sp1, fiq
+define_vector_trampoline 0x380, el1_sp1, serror
 
-define_vector_trampoline 0x400, lower64, synchronous
-define_vector_trampoline 0x480, lower64, irq
-define_vector_trampoline 0x500, lower64, fiq
-define_vector_trampoline 0x580, lower64, serror
+define_vector_trampoline 0x400, el0_a64, synchronous
+define_vector_trampoline 0x480, el0_a64, irq
+define_vector_trampoline 0x500, el0_a64, fiq
+define_vector_trampoline 0x580, el0_a64, serror
 
-define_vector_trampoline 0x600, lower32, synchronous
-define_vector_trampoline 0x680, lower32, irq
-define_vector_trampoline 0x700, lower32, fiq
-define_vector_trampoline 0x780, lower32, serror
+define_vector_trampoline 0x600, el0_a32, synchronous
+define_vector_trampoline 0x680, el0_a32, irq
+define_vector_trampoline 0x700, el0_a32, fiq
+define_vector_trampoline 0x780, el0_a32, serror
 
 // **These macros MUST be kept in sync with the `Context` struct defined in `task.rs`.**
 .macro task_save
@@ -119,25 +119,29 @@ define_vector_trampoline 0x780, lower32, serror
         eret
 .endm
 
-define_vector_stub el0, synchronous
-define_vector_stub el0, irq
-define_vector_stub el0, fiq
-define_vector_stub el0, serror
+// Exception taken from EL1 with SP_EL0
+define_vector_stub el1_sp0, synchronous
+define_vector_stub el1_sp0, irq
+define_vector_stub el1_sp0, fiq
+define_vector_stub el1_sp0, serror
 
-define_vector_stub elx, synchronous
-define_vector_stub elx, irq
-define_vector_stub elx, fiq
-define_vector_stub elx, serror
+// Exception taken from EL1 with SP_EL1
+define_vector_stub el1_sp1, synchronous
+define_vector_stub el1_sp1, irq
+define_vector_stub el1_sp1, fiq
+define_vector_stub el1_sp1, serror
 
-define_vector_task lower64, synchronous
-define_vector_task lower64, irq
-define_vector_task lower64, fiq
-define_vector_task lower64, serror
+// Exception taken from EL0 using AArch64
+define_vector_task el0_a64, synchronous
+define_vector_task el0_a64, irq
+define_vector_task el0_a64, fiq
+define_vector_task el0_a64, serror
 
-define_vector_stub lower32, synchronous
-define_vector_stub lower32, irq
-define_vector_stub lower32, fiq
-define_vector_stub lower32, serror
+// Exception taken from EL0 using AArch32
+define_vector_stub el0_a32, synchronous
+define_vector_stub el0_a32, irq
+define_vector_stub el0_a32, fiq
+define_vector_stub el0_a32, serror
 
 .global task_start
 task_start:
