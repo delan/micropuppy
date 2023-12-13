@@ -200,18 +200,19 @@ unsafe extern "C" fn vector_lower32_serror(context: *const Context) -> *const Co
 
 fn panic_on_synchronous_or_serror(kind: u8) -> ! {
     // TODO get rid of these kind codes, no need to call this from asm
-    let (syndrome, kind) = match kind {
-        b'A' => unimplemented!(), // synchronous, EL0 (there is no ESR_EL0)
-        b'D' => unimplemented!(), // SError, EL0 (there is no ESR_EL0)
-        b'E' => (read_special_reg!("ESR_EL1"), "synchronous, ELx"),
-        b'H' => (read_special_reg!("ESR_EL1"), "SError, ELx"),
-        b'I' => (read_special_reg!("ESR_EL1"), "synchronous, lower64"),
-        b'L' => (read_special_reg!("ESR_EL1"), "SError, lower64"),
-        b'M' => (read_special_reg!("ESR_EL1"), "synchronous, lower32"),
-        b'P' => (read_special_reg!("ESR_EL1"), "SError, lower32"),
+    let kind = match kind {
+        b'A' => "synchronous, SP_EL0",
+        b'D' => "SError, SP_EL0",
+        b'E' => "synchronous, SP_ELx",
+        b'H' => "SError, SP_ELx",
+        b'I' => "synchronous, lower64",
+        b'L' => "SError, lower64",
+        b'M' => "synchronous, lower32",
+        b'P' => "SError, lower32",
         _ => unreachable!(),
     };
     // TODO migrate to SystemRegister api
+    let syndrome = read_special_reg!("ESR_EL1");
     let exception_class = syndrome >> 26 & 0x3F;
     let reason = match exception_class {
         0x00 => Some("Unknown reason"),
