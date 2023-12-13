@@ -12,6 +12,68 @@ _start:
     hvc #0
 
 .section ".text.vectors"
+
+.macro task_save
+    // save task general-purpose registers
+    sub sp, sp, #0x120
+    stp x0, x1, [sp, #0x00]
+    stp x2, x3, [sp, #0x10]
+    stp x4, x5, [sp, #0x20]
+    stp x6, x7, [sp, #0x30]
+    stp x8, x9, [sp, #0x40]
+    stp x10, x11, [sp, #0x50]
+    stp x12, x13, [sp, #0x60]
+    stp x14, x15, [sp, #0x70]
+    stp x16, x17, [sp, #0x80]
+    stp x18, x19, [sp, #0x90]
+    stp x20, x21, [sp, #0xa0]
+    stp x22, x23, [sp, #0xb0]
+    stp x24, x25, [sp, #0xc0]
+    stp x26, x27, [sp, #0xd0]
+    stp x28, x29, [sp, #0xe0]
+    stp x30, x31, [sp, #0xf0]
+
+    // save task PC and SP
+    mrs x0, ELR_EL1
+    mrs x1, SP_EL0
+    stp x0, x1, [sp, #0x100]
+
+    // save task PSTATE (SPSR - saved PSR)
+    mrs x0, SPSR_EL1
+    str x0, [sp, #0x110]
+.endm
+
+.macro task_restore
+    // restore task PSTATE
+    ldr x0, [sp, #0x110]
+    msr SPSR_EL1, x0
+
+    // restore task PC and SP
+    ldp x0, x1, [sp, #0x100]
+    msr SP_EL0, x1
+    msr ELR_EL1, x0
+
+    // restore task general-purpose registers
+    ldp x30, x31, [sp, #0xf0]
+    ldp x28, x29, [sp, #0xe0]
+    ldp x26, x27, [sp, #0xd0]
+    ldp x24, x25, [sp, #0xc0]
+    ldp x22, x23, [sp, #0xb0]
+    ldp x20, x21, [sp, #0xa0]
+    ldp x18, x19, [sp, #0x90]
+    ldp x16, x17, [sp, #0x80]
+    ldp x14, x15, [sp, #0x70]
+    ldp x12, x13, [sp, #0x60]
+    ldp x10, x11, [sp, #0x50]
+    ldp x8, x9, [sp, #0x40]
+    ldp x6, x7, [sp, #0x30]
+    ldp x4, x5, [sp, #0x20]
+    ldp x2, x3, [sp, #0x10]
+    ldp x0, x1, [sp, #0x00]
+
+    add sp, sp, #0x120
+.endm
+
 el0_synchronous_vector:
     mov x1, #0x9000000
     mov w0, #'!'
@@ -19,6 +81,7 @@ el0_synchronous_vector:
     mov w0, #'A'
     strb w0, [x1]
     eret
+
 .align 7
 el0_irq_vector:
     mov x1, #0x9000000
@@ -27,6 +90,7 @@ el0_irq_vector:
     mov w0, #'B'
     strb w0, [x1]
     eret
+
 .align 7
 el0_fiq_vector:
     mov x1, #0x9000000
@@ -35,6 +99,7 @@ el0_fiq_vector:
     mov w0, #'C'
     strb w0, [x1]
     eret
+
 .align 7
 el0_serror_vector:
     mov x1, #0x9000000
@@ -43,6 +108,7 @@ el0_serror_vector:
     mov w0, #'D'
     strb w0, [x1]
     eret
+
 .align 7
 elx_synchronous_vector:
     mov x1, #0x9000000
@@ -64,9 +130,11 @@ elx_synchronous_vector:
     strb w0, [x1]
     b .
     eret
+
 .align 7
 elx_irq_vector:
     b elx_irq_wrapper
+
 .align 7
 elx_fiq_vector:
     mov x1, #0x9000000
@@ -75,6 +143,7 @@ elx_fiq_vector:
     mov w0, #'G'
     strb w0, [x1]
     eret
+
 .align 7
 elx_serror_vector:
     mov x1, #0x9000000
@@ -83,6 +152,7 @@ elx_serror_vector:
     mov w0, #'H'
     strb w0, [x1]
     eret
+
 .align 7
 lower64_synchronous_vector:
     mov x1, #0x9000000
@@ -91,9 +161,11 @@ lower64_synchronous_vector:
     mov w0, #'I'
     strb w0, [x1]
     eret
+
 .align 7
 lower64_irq_vector:
     b lower64_irq_wrapper
+
 .align 7
 lower64_fiq_vector:
     mov x1, #0x9000000
@@ -102,6 +174,7 @@ lower64_fiq_vector:
     mov w0, #'K'
     strb w0, [x1]
     eret
+
 .align 7
 lower64_serror_vector:
     mov x1, #0x9000000
@@ -110,6 +183,7 @@ lower64_serror_vector:
     mov w0, #'L'
     strb w0, [x1]
     eret
+
 .align 7
 lower32_synchronous_vector:
     mov x1, #0x9000000
@@ -118,6 +192,7 @@ lower32_synchronous_vector:
     mov w0, #'M'
     strb w0, [x1]
     eret
+
 .align 7
 lower32_irq_vector:
     mov x1, #0x9000000
@@ -126,6 +201,7 @@ lower32_irq_vector:
     mov w0, #'N'
     strb w0, [x1]
     eret
+
 .align 7
 lower32_fiq_vector:
     mov x1, #0x9000000
@@ -134,6 +210,7 @@ lower32_fiq_vector:
     mov w0, #'O'
     strb w0, [x1]
     eret
+
 .align 7
 lower32_serror_vector:
     mov x1, #0x9000000
@@ -142,83 +219,24 @@ lower32_serror_vector:
     mov w0, #'P'
     strb w0, [x1]
     eret
-.align 7
 
+.align 7
 elx_irq_wrapper:
-    // TODO: since this is an exception vector, we have no guarantee that sp is 16-byte aligned.
-    // we'll either need to align it here, or ignore the problem until we have kernel or exception
-    // stacks
-    msr SPSel, #1
-    ldr x30, =INITIAL_SP
-    mov sp, x30
-    sub sp, sp, #0x80
-    str x0, [sp, #0x00]
-    str x1, [sp, #0x04]
-    str x2, [sp, #0x08]
-    str x3, [sp, #0x0C]
-    str x4, [sp, #0x10]
-    str x5, [sp, #0x14]
-    str x6, [sp, #0x18]
-    str x7, [sp, #0x1C]
-    str x8, [sp, #0x20]
-    str x9, [sp, #0x24]
-    str x10, [sp, #0x28]
-    str x11, [sp, #0x2C]
-    str x12, [sp, #0x30]
-    str x13, [sp, #0x34]
-    str x14, [sp, #0x38]
-    str x15, [sp, #0x3C]
-    str x16, [sp, #0x40]
-    str x17, [sp, #0x44]
-    str x18, [sp, #0x48]
-    str x19, [sp, #0x4C]
-    str x20, [sp, #0x50]
-    str x21, [sp, #0x54]
-    str x22, [sp, #0x58]
-    str x23, [sp, #0x5C]
-    str x24, [sp, #0x60]
-    str x25, [sp, #0x64]
-    str x26, [sp, #0x68]
-    str x27, [sp, #0x6C]
-    str x28, [sp, #0x70]
-    str x29, [sp, #0x74]
-    str x30, [sp, #0x78]
-    str x31, [sp, #0x7C]
+    task_save
+    mov x0, sp
+
     bl elx_irq
-    ldr x0, [sp, #0x00]
-    ldr x1, [sp, #0x04]
-    ldr x2, [sp, #0x08]
-    ldr x3, [sp, #0x0C]
-    ldr x4, [sp, #0x10]
-    ldr x5, [sp, #0x14]
-    ldr x6, [sp, #0x18]
-    ldr x7, [sp, #0x1C]
-    ldr x8, [sp, #0x20]
-    ldr x9, [sp, #0x24]
-    ldr x10, [sp, #0x28]
-    ldr x11, [sp, #0x2C]
-    ldr x12, [sp, #0x30]
-    ldr x13, [sp, #0x34]
-    ldr x14, [sp, #0x38]
-    ldr x15, [sp, #0x3C]
-    ldr x16, [sp, #0x40]
-    ldr x17, [sp, #0x44]
-    ldr x18, [sp, #0x48]
-    ldr x19, [sp, #0x4C]
-    ldr x20, [sp, #0x50]
-    ldr x21, [sp, #0x54]
-    ldr x22, [sp, #0x58]
-    ldr x23, [sp, #0x5C]
-    ldr x24, [sp, #0x60]
-    ldr x25, [sp, #0x64]
-    ldr x26, [sp, #0x68]
-    ldr x27, [sp, #0x6C]
-    ldr x28, [sp, #0x70]
-    ldr x29, [sp, #0x74]
-    ldr x30, [sp, #0x78]
-    ldr x31, [sp, #0x7C]
-    add sp, sp, #0x80
+
+    mov sp, x0
+    task_restore
     eret
 
 lower64_irq_wrapper:
     b elx_irq_wrapper
+
+
+.global scheduler_start
+scheduler_start:
+    mov sp, x0
+    task_restore
+    eret

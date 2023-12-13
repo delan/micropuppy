@@ -24,7 +24,7 @@ macro_rules! read_special_reg {
 macro_rules! write_special_reg {
     ($special:literal, $value:expr) => {{
         unsafe {
-            ::core::arch::asm!(concat!("msr ", $special, ", {}"), in(reg) $value);
+            ::core::arch::asm!(concat!("msr ", $special, ", {:x}"), in(reg) $value);
         }
     }};
 }
@@ -42,7 +42,7 @@ use core::fmt::Write;
 use core::panic::PanicInfo;
 use core::ptr::null;
 
-use task::Scheduler;
+use task::{Context, Scheduler, Task};
 
 use crate::a53::daif::DAIF;
 use crate::gicv2::InterruptId;
@@ -63,7 +63,7 @@ static mut GICC: gicv2::CpuInterface = gicv2::CpuInterface::new(null());
 static mut SCHEDULER: OnceCell<Scheduler> = OnceCell::new();
 
 #[no_mangle]
-unsafe extern "C" fn elx_irq() {
+unsafe extern "C" fn elx_irq(mut context: *const Context) -> *const Context {
     let mut run_scheduler = false;
     GICC.handle(|cpuid, interrupt_id| {
         log::trace!("elx_irq cpuid = {cpuid}, interrupt_id = {interrupt_id:?}");
@@ -77,13 +77,15 @@ unsafe extern "C" fn elx_irq() {
     });
     if run_scheduler {
         if let Some(scheduler) = SCHEDULER.get_mut() {
-            if let Some(task) = scheduler.current_task() {
-                scheduler.save();
-                log::debug!("Saved task {task}: {:?}", scheduler.get(task));
-            }
-            scheduler.run();
+            // if let Some(task) = scheduler.current_task() {
+            //     scheduler.save();
+            //     log::debug!("Saved task {task}: {:?}", scheduler.get(task));
+            // }
+            context = scheduler.do_your_work();
         }
     }
+
+    context
 }
 
 #[panic_handler]
@@ -181,9 +183,11 @@ pub extern "C" fn kernel_main() {
         SCHEDULER.get_or_init(|| Scheduler::new());
     }
 
-    // unmask interrupts
-    let daif = SystemRegister::<DAIF>::new();
-    daif.write_initial(|w| w.i(false));
+    // // unmask interrupts
+    // let daif = SystemRegister::<DAIF>::new();
+    // daif.write_initial(|w| w.i(false));
+
+    unsafe { SCHEDULER.get_mut() }.unwrap().start();
 
     loop {}
 }

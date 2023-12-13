@@ -32,9 +32,17 @@ SECTIONS
         . = . + 0x4000;
         TASK1_INITIAL_SP = .;
     }
+    .task1_kernel ALIGN(16) (NOLOAD) : {
+        . = . + 0x4000;
+        TASK1_KERNEL_INITIAL_SP = .;
+    }
     .task2 ALIGN(16) (NOLOAD) : {
         . = . + 0x4000;
         TASK2_INITIAL_SP = .;
+    }
+    .task2_kernel ALIGN(16) (NOLOAD) : {
+        . = . + 0x4000;
+        TASK2_KERNEL_INITIAL_SP = .;
     }
 
     /* Debugging: DWARF */
