@@ -1,4 +1,5 @@
 use std::ffi::OsStr;
+use std::os::unix::process::CommandExt;
 use std::path::Path;
 use std::process::Command;
 
@@ -21,9 +22,25 @@ impl Runner {
         eprintln!("{}", format!("🧾 running step `{name}`").bold());
     }
 
-    pub fn invoke(&self, command: impl IntoCommand) -> Result<()> {
+    pub fn run(&self, command: impl IntoCommand) -> Result<()> {
         let mut command = command.into_command(&self.binaries)?;
 
+        self.print_subprocess("running", &command)?;
+        command.spawn()?.wait()?.exit_ok()?;
+
+        Ok(())
+    }
+
+    pub fn exec(&self, command: impl IntoCommand) -> Result<()> {
+        let mut command = command.into_command(&self.binaries)?;
+
+        self.print_subprocess("launching", &command)?;
+        Err(command.exec())?;
+
+        unreachable!("exec should not return");
+    }
+
+    fn print_subprocess(&self, action: &str, command: &Command) -> Result<()> {
         let program = command.get_program();
         let args = command.get_args();
         let command_line = std::iter::once(program)
@@ -46,12 +63,10 @@ impl Runner {
 
         if let Some(current_dir) = command.get_current_dir() {
             let current_dir = current_dir.to_str_or_err()?;
-            eprintln!("⭐ invoking `{}` in {}", command_line, current_dir);
+            eprintln!("⭐ {} `{}` in {}", action, command_line, current_dir);
         } else {
-            eprintln!("⭐ invoking `{}`", command_line);
+            eprintln!("⭐ {} `{}`", action, command_line);
         }
-
-        command.spawn()?.wait()?.exit_ok()?;
 
         Ok(())
     }

@@ -143,7 +143,7 @@ fn main() -> Result<()> {
 
     let build = || -> Result<()> {
         runner.step("build");
-        runner.invoke(
+        runner.run(
             command::make("build")
                 .directory("kernel/")
                 .variable("CARGOFLAGS", target.cargo_profile_flag()),
@@ -154,7 +154,7 @@ fn main() -> Result<()> {
 
     let clean = || -> Result<()> {
         runner.step("clean");
-        runner.invoke(command::make("clean").directory("kernel/"))?;
+        runner.run(command::make("clean").directory("kernel/"))?;
 
         Ok(())
     };
@@ -164,7 +164,7 @@ fn main() -> Result<()> {
         let kernel = Path::new("..").join(&kernel);
 
         runner.step("qemu");
-        runner.invoke(
+        runner.exec(
             command::make("run-kernel")
                 .directory("qemu/")
                 .variable("QEMUFLAGS", qemuflags)
@@ -176,7 +176,7 @@ fn main() -> Result<()> {
 
     let gdb = || -> Result<()> {
         runner.step("gdb");
-        runner.invoke(
+        runner.exec(
             command::gdb(kernel.to_str().unwrap())
                 .arg("-ex")
                 .arg("target remote localhost:1234"),
