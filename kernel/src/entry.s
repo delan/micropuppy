@@ -40,8 +40,9 @@ define_vector_trampoline 0x780, el0_a32, serror
 
 // **These macros MUST be kept in sync with the `Context` struct defined in `task.rs`.**
 .macro task_save
-    // GPRs => context.gprs
-    sub sp, sp, #0x120
+    sub sp, sp, #0x110
+
+    // GPRs x0 through x29 => context.gprs[0] through context.gprs[29]
     stp x0, x1, [sp, #0x00]
     stp x2, x3, [sp, #0x10]
     stp x4, x5, [sp, #0x20]
@@ -57,32 +58,32 @@ define_vector_trampoline 0x780, el0_a32, serror
     stp x24, x25, [sp, #0xc0]
     stp x26, x27, [sp, #0xd0]
     stp x28, x29, [sp, #0xe0]
-    stp x30, x31, [sp, #0xf0]
+
+    // GPR x30 => context.gprs[30]
+    // PSTATE => context.psr (we can clobber x0, since it's already been saved)
+    mrs x0, SPSR_EL1
+    stp x30, x0, [sp, #0xf0]
 
     // PC => context.pc
     // SP => context.sp
     mrs x0, ELR_EL1
     mrs x1, SP_EL0
     stp x0, x1, [sp, #0x100]
-
-    // PSTATE => context.psr
-    mrs x0, SPSR_EL1
-    str x0, [sp, #0x110]
 .endm
 
 .macro task_restore
-    // context.psr => PSTATE
-    ldr x0, [sp, #0x110]
-    msr SPSR_EL1, x0
-
     // context.sp => SP
     // context.pc => PC
     ldp x0, x1, [sp, #0x100]
     msr SP_EL0, x1
     msr ELR_EL1, x0
 
-    // context.gprs => GPRs
-    ldp x30, x31, [sp, #0xf0]
+    // context.psr => PSTATE
+    // GPR x30 => context.gprs[30] (we can clobber x0 since it hasn't been restored yet)
+    ldp x30, x0, [sp, #0xf0]
+    msr SPSR_EL1, x0
+
+    // context.gprs[0] through context.gprs[29] => GPRs x0 through x29
     ldp x28, x29, [sp, #0xe0]
     ldp x26, x27, [sp, #0xd0]
     ldp x24, x25, [sp, #0xc0]
@@ -99,7 +100,7 @@ define_vector_trampoline 0x780, el0_a32, serror
     ldp x2, x3, [sp, #0x10]
     ldp x0, x1, [sp, #0x00]
 
-    add sp, sp, #0x120
+    add sp, sp, #0x110
 .endm
 
 .macro define_vector_stub, source:req, type:req
