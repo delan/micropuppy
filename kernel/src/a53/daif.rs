@@ -26,6 +26,7 @@ impl RegisterInitial for DAIF {
     const INITIAL_VALUE: Self::Bits = 0x3c0;
 }
 
+#[allow(dead_code)]
 impl RegisterReader<DAIF> {
     pub fn d(&self) -> bool {
         self.bit(9)
@@ -44,6 +45,7 @@ impl RegisterReader<DAIF> {
     }
 }
 
+#[allow(dead_code)]
 impl RegisterWriter<DAIF> {
     pub fn d(&mut self, d: bool) {
         unsafe { self.bit(9, d) }

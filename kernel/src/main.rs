@@ -3,6 +3,7 @@
 #![feature(panic_info_message)]
 #![deny(clippy::undocumented_unsafe_blocks)]
 
+#[allow(unused_macros)]
 macro_rules! dbg {
     ($value:expr) => {{
         let value = $value;
@@ -14,19 +15,15 @@ macro_rules! dbg {
 macro_rules! read_special_reg {
     ($special:literal) => {{
         let result: u64;
-        unsafe {
-            ::core::arch::asm!(concat!("mrs {}, ", $special), out(reg) result);
-        }
+        ::core::arch::asm!(concat!("mrs {}, ", $special), out(reg) result);
         result
     }};
 }
 
 macro_rules! write_special_reg {
-    ($special:literal, $value:expr) => {{
-        unsafe {
-            ::core::arch::asm!(concat!("msr ", $special, ", {:x}"), in(reg) $value);
-        }
-    }};
+    ($special:literal, $value:expr) => {
+        ::core::arch::asm!(concat!("msr ", $special, ", {:x}"), in(reg) $value);
+    };
 }
 
 mod a53;
@@ -44,12 +41,10 @@ use core::panic::PanicInfo;
 use core::ptr::null;
 
 use scheduler::Scheduler;
-use task::{Context, Task};
+use task::Context;
 
-use crate::a53::daif::DAIF;
 use crate::gicv2::InterruptId;
 use crate::logging::Pl011Writer;
-use crate::reg::system::Register as SystemRegister;
 use crate::sync::OnceCell;
 
 global_asm!(include_str!("entry.s"), options(raw));
@@ -185,7 +180,7 @@ fn panic_on_synchronous_or_serror(kind: u8) -> ! {
         _ => unreachable!(),
     };
     // TODO migrate to SystemRegister api
-    let syndrome = read_special_reg!("ESR_EL1");
+    let syndrome = unsafe { read_special_reg!("ESR_EL1") };
     let exception_class = syndrome >> 26 & 0x3F;
     let reason = match exception_class {
         0x00 => Some("Unknown reason"),
@@ -271,8 +266,10 @@ pub extern "C" fn kernel_main() {
     log::debug!("woof!!!! wraaaooo!!");
 
     // enable timer interrupts
-    log::debug!("CNTFRQ_EL0 = {:016X}h", read_special_reg!("CNTFRQ_EL0"));
-    write_special_reg!("CNTP_CTL_EL0", 1u64);
+    unsafe {
+        log::debug!("CNTFRQ_EL0 = {:016X}h", read_special_reg!("CNTFRQ_EL0"));
+        write_special_reg!("CNTP_CTL_EL0", 1u64);
+    }
 
     let timer = fdt.find_compatible(&["arm,armv8-timer"]).unwrap();
     let timer_interrupts = timer.property("interrupts").unwrap().value;
@@ -300,11 +297,8 @@ pub extern "C" fn kernel_main() {
         SCHEDULER.get_or_init(|| Scheduler::new());
     }
 
-    // // unmask interrupts
-    // let daif = SystemRegister::<DAIF>::new();
-    // daif.write_initial(|w| w.i(false));
-
+    // Permanently transfer control to the scheduler.
+    // We don’t need to explicitly clear DAIF.I, because the initial task_restore (entry.s) will
+    // clear it when ERET copies the task’s SPSR to PSTATE.
     unsafe { SCHEDULER.get_mut() }.unwrap().start();
-
-    loop {}
 }

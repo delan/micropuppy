@@ -1,9 +1,7 @@
 use byteorder::{BigEndian, ByteOrder};
 
-use crate::{
-    a53::gicv2::{CpuInterfaceRegisterBlock, DistributorRegisterBlock},
-    num::AsUsize,
-};
+use crate::a53::gicv2::{CpuInterfaceRegisterBlock, DistributorRegisterBlock};
+use crate::num::AsUsize;
 
 macro_rules! bounds_checked {
     ($(#[$meta:meta])* $vis:vis struct $name:ident ($int:ident ($low:literal ..= $high:literal))) => {
@@ -64,7 +62,7 @@ impl Distributor {
     pub fn enable_interrupt(&mut self, interrupt_id: impl Into<InterruptId>) {
         let gicd = unsafe { &*self.0 };
 
-        let interrupt_id = interrupt_id.into().0;
+        let interrupt_id = interrupt_id.into().value();
         let (n, m) = (interrupt_id / 32, interrupt_id % 32);
 
         gicd.isenabler[n].write_initial(|w| w.set_enable(m));
@@ -109,13 +107,13 @@ impl InterruptId {
 
 impl From<PpiNumber> for InterruptId {
     fn from(value: PpiNumber) -> Self {
-        Self(value.0 + 0x10)
+        Self(value.value() + 0x10)
     }
 }
 
 impl From<SpiNumber> for InterruptId {
     fn from(value: SpiNumber) -> Self {
-        Self(value.0 + 0x20)
+        Self(value.value() + 0x20)
     }
 }
 

@@ -62,12 +62,14 @@ pub struct DistributorRegisterBlock {
 
 reg! { GICD_CTLR(u32), rwi=0x0000_0000 }
 
+#[allow(dead_code)]
 impl RegisterReader<GICD_CTLR> {
     pub fn enable(&self) -> bool {
         self.bit(0)
     }
 }
 
+#[allow(dead_code)]
 impl RegisterWriter<GICD_CTLR> {
     pub fn enable(&mut self, enable: bool) {
         unsafe { self.bit(0, enable) }
@@ -76,6 +78,7 @@ impl RegisterWriter<GICD_CTLR> {
 
 reg! { GICD_ISENABLER(u32), wi=0x0000_0000 }
 
+#[allow(dead_code)]
 impl RegisterWriter<GICD_ISENABLER> {
     pub fn set_enable(&mut self, m: usize) {
         unsafe { self.bit(m, true) }
@@ -126,12 +129,14 @@ pub struct CpuInterfaceRegisterBlock {
 
 reg! { GICC_CTLR(u32), rwi=0x0000_0000 }
 
+#[allow(dead_code)]
 impl RegisterReader<GICC_CTLR> {
     pub fn enable(&self) -> bool {
         self.bit(0)
     }
 }
 
+#[allow(dead_code)]
 impl RegisterWriter<GICC_CTLR> {
     pub fn enable(&mut self, enable: bool) {
         unsafe { self.bit(0, enable) }
@@ -140,12 +145,14 @@ impl RegisterWriter<GICC_CTLR> {
 
 reg! { GICC_PMR(u32), rwi=0x0000_0000 }
 
+#[allow(dead_code)]
 impl RegisterReader<GICC_PMR> {
     pub fn priority(&self) -> u8 {
         self.field(0..=7) as _
     }
 }
 
+#[allow(dead_code)]
 impl RegisterWriter<GICC_PMR> {
     pub fn priority(&mut self, priority: u8) {
         unsafe { self.field(0..=7, priority as _) }
@@ -154,6 +161,7 @@ impl RegisterWriter<GICC_PMR> {
 
 reg! { GICC_IAR(u32), r }
 
+#[allow(dead_code)]
 impl RegisterReader<GICC_IAR> {
     pub fn entire(&self) -> u32 {
         self.bits()
@@ -170,6 +178,7 @@ impl RegisterReader<GICC_IAR> {
 // GICC_EOIR, the GIC ignores that write.”
 reg! { GICC_EOIR(u32), wi=0x000003FF }
 
+#[allow(dead_code)]
 impl RegisterWriter<GICC_EOIR> {
     pub fn entire_iar(&mut self, iar: u32) {
         unsafe { self.bits(iar) }

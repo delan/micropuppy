@@ -52,12 +52,14 @@ pub struct Pl011RegisterBlock {
 
 reg! { UARTDR(u32), rwi=0x0000_0000 }
 
+#[allow(dead_code)]
 impl RegisterReader<UARTDR> {
     pub fn data(&self) -> u8 {
         self.field(0..=7) as _
     }
 }
 
+#[allow(dead_code)]
 impl RegisterWriter<UARTDR> {
     pub fn data(&mut self, data: u8) {
         unsafe { self.field(0..=7, data as _) }

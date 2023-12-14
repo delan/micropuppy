@@ -22,6 +22,7 @@ impl RegisterReadable for NZCV {}
 
 impl RegisterWritable for NZCV {}
 
+#[allow(dead_code)]
 impl RegisterReader<NZCV> {
     pub fn n(&self) -> bool {
         self.bit(31)
@@ -37,6 +38,7 @@ impl RegisterReader<NZCV> {
     }
 }
 
+#[allow(dead_code)]
 impl RegisterWriter<NZCV> {
     pub fn n(&mut self, n: bool) {
         unsafe { self.bit(31, n) }
