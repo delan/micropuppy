@@ -4,4 +4,6 @@ members = ["kernel"]
 exclude = ["runner"]
 
 [profile.dev]
-# opt-level = 1
+# Unoptimised Rust is so chonky that it will absolutely overflow any reasonably sized stack. Do a
+# bare minimum amount of optimisation so that our stacks can be "small".
+opt-level = 1
