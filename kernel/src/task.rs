@@ -70,53 +70,46 @@ impl Context {
 
 impl fmt::Debug for Context {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        macro_rules! write_regL {
-            ($f:expr, $name:expr, $value:expr) => {
-                write!($f, "    {:>3}: {:#018x},", $name, $value)
-            };
+        struct R<'a>(&'a str, u64);
+
+        impl fmt::Display for R<'_> {
+            fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+                write!(f, "{:>3}: {:#018x}", self.0, self.1)
+            }
         }
 
-        macro_rules! write_regR {
-            ($f:expr, $name:expr, $value:expr) => {
-                writeln!($f, " {:>3}: {:#018x},", $name, $value)
-            };
+        struct Blank;
+
+        impl fmt::Display for Blank {
+            fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+                write!(f, "                       ")
+            }
         }
+
+        // not destructuring due to the required `as u64` conversions
+        let x = self.gprs;
+        let sp = self.sp as u64;
+        let pc = self.pc as u64;
+        let psr = self.psr;
 
         writeln!(f, "Context {{")?;
-        write_regL!(f, "x0", self.gprs[0])?;
-        write_regR!(f, "x1", self.gprs[1])?;
-        write_regL!(f, "x2", self.gprs[2])?;
-        write_regR!(f, "x3", self.gprs[3])?;
-        write_regL!(f, "x4", self.gprs[4])?;
-        write_regR!(f, "x5", self.gprs[5])?;
-        write_regL!(f, "x6", self.gprs[6])?;
-        write_regR!(f, "x7", self.gprs[7])?;
-        write_regL!(f, "x8", self.gprs[8])?;
-        write_regR!(f, "x9", self.gprs[9])?;
-        write_regL!(f, "x10", self.gprs[10])?;
-        write_regR!(f, "x11", self.gprs[11])?;
-        write_regL!(f, "x12", self.gprs[12])?;
-        write_regR!(f, "x13", self.gprs[13])?;
-        write_regL!(f, "x14", self.gprs[14])?;
-        write_regR!(f, "x15", self.gprs[15])?;
-        write_regL!(f, "x16", self.gprs[16])?;
-        write_regR!(f, "x17", self.gprs[17])?;
-        write_regL!(f, "x18", self.gprs[18])?;
-        write_regR!(f, "x19", self.gprs[19])?;
-        write_regL!(f, "x20", self.gprs[20])?;
-        write_regR!(f, "x21", self.gprs[21])?;
-        write_regL!(f, "x22", self.gprs[22])?;
-        write_regR!(f, "x23", self.gprs[23])?;
-        write_regL!(f, "x24", self.gprs[24])?;
-        write_regR!(f, "x25", self.gprs[25])?;
-        write_regL!(f, "x26", self.gprs[26])?;
-        write_regR!(f, "x27", self.gprs[27])?;
-        write_regL!(f, "x28", self.gprs[28])?;
-        write_regR!(f, "x29", self.gprs[29])?;
-        write_regL!(f, "x30", self.gprs[30])?;
-        write_regR!(f, "psr", self.psr)?;
-        write_regL!(f, "pc", self.pc as usize)?;
-        write_regR!(f, "sp", self.sp as usize)?;
+        writeln!(f, "    {}, {},", R("x0", x[0]), R("x1", x[1]))?;
+        writeln!(f, "    {}, {},", R("x2", x[2]), R("x3", x[3]))?;
+        writeln!(f, "    {}, {},", R("x4", x[4]), R("x5", x[5]))?;
+        writeln!(f, "    {}, {},", R("x6", x[6]), R("x6", x[7]))?;
+        writeln!(f, "    {}, {},", R("x8", x[8]), R("x9", x[9]))?;
+        writeln!(f, "    {}, {},", R("x10", x[10]), R("x11", x[11]))?;
+        writeln!(f, "    {}, {},", R("x12", x[12]), R("x13", x[13]))?;
+        writeln!(f, "    {}, {},", R("x14", x[14]), R("x15", x[15]))?;
+        writeln!(f, "    {}, {},", R("x16", x[16]), R("x16", x[17]))?;
+        writeln!(f, "    {}, {},", R("x18", x[18]), R("x19", x[19]))?;
+        writeln!(f, "    {}, {},", R("x20", x[20]), R("x21", x[21]))?;
+        writeln!(f, "    {}, {},", R("x22", x[22]), R("x23", x[23]))?;
+        writeln!(f, "    {}, {},", R("x24", x[24]), R("x25", x[25]))?;
+        writeln!(f, "    {}, {},", R("x26", x[26]), R("x26", x[27]))?;
+        writeln!(f, "    {}, {},", R("x28", x[28]), R("x29", x[29]))?;
+        writeln!(f, "    {}, {},", R("x30", x[30]), R("sp", sp))?;
+        writeln!(f, "    {}, {},", R("pc", pc), R("psr", psr))?;
         writeln!(f, "}}")?;
 
         Ok(())
