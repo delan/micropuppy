@@ -1,4 +1,4 @@
-use core::fmt;
+use core::{fmt, iter};
 
 use bitvec::prelude::*;
 
@@ -37,7 +37,7 @@ impl<'s> Tree<'s> {
 
         let storage = &mut storage[0..bits];
 
-        // initially, every node is unallocated
+        // initially, every node is unallocated and available
         storage.fill(false);
 
         Self { storage, depth }
@@ -55,50 +55,51 @@ impl<'s> Tree<'s> {
         let depth = self.depth - height;
 
         // find an available node with the requested depth
-        let node_index = self.preorder(|node_index| {
-            eprintln!("preorder visiting {node_index:?}");
-            let node = self.node(node_index);
+        let node = self.preorder(|node| {
+            eprintln!("preorder visiting {node:?}");
 
-            if node.allocated || (!node.available && node_index.depth() == depth) {
-                Action::Skip
-            } else if node.available && node_index.depth() == depth {
-                Action::Yield(node_index)
-            } else {
-                Action::Descend
+            let node_is_requested_depth = node.depth() == depth;
+            match self.state(node) {
+                NodeState::Allocated => Action::Skip,
+                NodeState::Unavailable if node_is_requested_depth => Action::Skip,
+                NodeState::Available if node_is_requested_depth => Action::Yield(node),
+                _ => Action::Descend,
             }
         });
 
-        // update the tree
-        node_index.map(|node_index| {
-            // allocate the node
-            self.set_node(
-                node_index,
-                Node {
-                    allocated: true,
-                    available: false,
-                },
-            );
+        // update the tree and generate the actual allocation offset and size
+        node.map(|node| {
+            // mark the node as allocated
+            self.set_state(node, NodeState::Allocated);
 
-            // mark parents as either allocated or unavailable
-            let mut parent_index = node_index.parent();
-            while let Some(parent_index2) = parent_index {
-                let allocated = self.node(parent_index2.left_child()).allocated
-                    && self.node(parent_index2.right_child()).allocated;
-                let available = false;
+            // we know the node corresponding to our allocation has just gone from (unallocated and
+            // available) to (allocated and unavailable). we need to do two things:
+            // - mark every node in our node's path to the root as, at minimum, unavailable
+            //   - a node with one or more allocated children can't be allocated
+            // - as we climb the tree, if our node's buddy (sibling) is also allocated:
+            //   - both the children of the node's parent must be allocated
+            //   - thus, the parent should be marked as allocated too
+            let mut buddies = self.buddies(node);
 
-                self.set_node(
-                    parent_index2,
-                    Node {
-                        allocated,
-                        available,
-                    },
-                );
+            // mark parents as allocated until we reach a node where our buddy isn't allocated
+            for (buddy, parent) in &mut buddies {
+                if self.state(buddy) != NodeState::Allocated {
+                    // since the item has been consumed from the iterator, we need to mark the
+                    // parent as unavailable here otherwise it will be missed by the loop below
+                    self.set_state(parent, NodeState::Unavailable);
+                    break;
+                }
 
-                parent_index = parent_index2.parent();
+                self.set_state(parent, NodeState::Allocated);
+            }
+
+            // mark remaining parents as unavailable
+            for (_, parent) in &mut buddies {
+                self.set_state(parent, NodeState::Unavailable);
             }
 
             Allocation {
-                offset: node_index.offset() << height,
+                offset: node.offset() << height,
                 size: 1 << height,
             }
         })
@@ -129,24 +130,49 @@ impl<'s> Tree<'s> {
         preorder(self, NodeIndex::root(), &mut visitor)
     }
 
-    pub fn node(&self, node: NodeIndex) -> Node {
+    fn state(&self, node: NodeIndex) -> NodeState {
         assert!(self.has_node(node));
 
-        Node {
-            available: !self.storage[2 * node.0],
-            allocated: self.storage[2 * node.0 + 1],
+        let unavailable = self.storage[2 * node.0];
+        let allocated = self.storage[2 * node.0 + 1];
+
+        match (unavailable, allocated) {
+            (false, _) => NodeState::Available,
+            (true, false) => NodeState::Unavailable,
+            (true, true) => NodeState::Allocated,
         }
     }
 
-    fn set_node(&mut self, node_index: NodeIndex, node: Node) {
-        assert!(self.has_node(node_index));
+    fn set_state(&mut self, node: NodeIndex, state: NodeState) {
+        assert!(self.has_node(node));
 
-        self.storage.set(2 * node_index.0, !node.available);
-        self.storage.set(2 * node_index.0 + 1, node.allocated);
+        let (unavailable, allocated) = match state {
+            NodeState::Available => (false, false),
+            NodeState::Unavailable => (true, false),
+            NodeState::Allocated => (true, true),
+        };
+
+        self.storage.set(2 * node.0, unavailable);
+        self.storage.set(2 * node.0 + 1, allocated);
     }
 
     fn nodes(&self) -> impl Iterator<Item = NodeIndex> + '_ {
         (0..self.node_count()).map(NodeIndex)
+    }
+
+    fn buddies(&self, node: NodeIndex) -> impl Iterator<Item = (NodeIndex, NodeIndex)> {
+        let mut node = node;
+
+        iter::from_fn(move || {
+            let parent = node.parent();
+            let buddy = node.buddy();
+
+            if let Some(parent) = parent {
+                node = parent;
+            }
+
+            buddy.zip(parent)
+        })
     }
 
     fn has_node(&self, node: NodeIndex) -> bool {
@@ -162,12 +188,14 @@ impl<'s> Tree<'s> {
     }
 }
 
-#[derive(Debug)]
-pub struct Node {
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum NodeState {
     /// has unallocated children
-    pub available: bool,
+    Available,
+    /// has no unallocated children
+    Unavailable,
     /// allocated, or all children allocated
-    pub allocated: bool,
+    Allocated,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -181,6 +209,10 @@ impl NodeIndex {
 
     pub fn parent(self) -> Option<Self> {
         (!self.is_root()).then(|| Self((self.0 - 1) / 2))
+    }
+
+    pub fn buddy(self) -> Option<Self> {
+        (!self.is_root()).then(|| Self(((self.0 - 1) ^ 1) + 1))
     }
 
     pub fn children(self) -> (Self, Self) {
@@ -225,18 +257,14 @@ impl fmt::Display for Dot<'_, '_> {
         writeln!(f, "digraph {{")?;
         writeln!(f, "  node [style=filled, fixedsize=true];")?;
         for node_index in tree.nodes() {
-            let node = tree.node(node_index);
+            const GREEN: &str = "#9dd5c0";
+            const RED: &str = "#f1646c";
+            let (fillcolor, shape) = match tree.state(node_index) {
+                NodeState::Available => (GREEN, "circle"),
+                NodeState::Unavailable => (RED, "circle"),
+                NodeState::Allocated => (RED, "doublecircle"),
+            };
 
-            let fillcolor = if node.available {
-                "#9dd5c0" // green
-            } else {
-                "#f1646c" // red
-            };
-            let shape = if node.allocated {
-                "doublecircle"
-            } else {
-                "circle"
-            };
             writeln!(
                 f,
                 "  n{} [fillcolor=\"{}\", shape=\"{}\"];",
@@ -300,6 +328,12 @@ mod tests {
         // node index 13
         assert_eq!(tree.allocate(1), Some(Allocation { offset: 6, size: 1 }));
         eprintln!("{}", tree.dot());
+
+        // node index 14
+        assert_eq!(tree.allocate(1), Some(Allocation { offset: 7, size: 1 }));
+        eprintln!("{}", tree.dot());
+
+        assert_eq!(tree.allocate(1), None);
     }
 
     #[test]
@@ -381,6 +415,7 @@ mod tests {
         // depth 0, height 3
         let node = NodeIndex(0);
         assert_eq!(node.parent(), None);
+        assert_eq!(node.buddy(), None);
         assert_eq!(node.left_child(), NodeIndex(1));
         assert_eq!(node.right_child(), NodeIndex(2));
         assert_eq!(node.depth(), 0);
@@ -389,6 +424,7 @@ mod tests {
         // depth 1, height 2
         let node = NodeIndex(1);
         assert_eq!(node.parent(), Some(NodeIndex(0)));
+        assert_eq!(node.buddy(), Some(NodeIndex(2)));
         assert_eq!(node.left_child(), NodeIndex(3));
         assert_eq!(node.right_child(), NodeIndex(4));
         assert_eq!(node.depth(), 1);
@@ -396,6 +432,7 @@ mod tests {
 
         let node = NodeIndex(2);
         assert_eq!(node.parent(), Some(NodeIndex(0)));
+        assert_eq!(node.buddy(), Some(NodeIndex(1)));
         assert_eq!(node.left_child(), NodeIndex(5));
         assert_eq!(node.right_child(), NodeIndex(6));
         assert_eq!(node.depth(), 1);
@@ -404,6 +441,7 @@ mod tests {
         // depth 2, height 1
         let node = NodeIndex(3);
         assert_eq!(node.parent(), Some(NodeIndex(1)));
+        assert_eq!(node.buddy(), Some(NodeIndex(4)));
         assert_eq!(node.left_child(), NodeIndex(7));
         assert_eq!(node.right_child(), NodeIndex(8));
         assert_eq!(node.depth(), 2);
@@ -411,6 +449,7 @@ mod tests {
 
         let node = NodeIndex(4);
         assert_eq!(node.parent(), Some(NodeIndex(1)));
+        assert_eq!(node.buddy(), Some(NodeIndex(3)));
         assert_eq!(node.left_child(), NodeIndex(9));
         assert_eq!(node.right_child(), NodeIndex(10));
         assert_eq!(node.depth(), 2);
@@ -418,6 +457,7 @@ mod tests {
 
         let node = NodeIndex(5);
         assert_eq!(node.parent(), Some(NodeIndex(2)));
+        assert_eq!(node.buddy(), Some(NodeIndex(6)));
         assert_eq!(node.left_child(), NodeIndex(11));
         assert_eq!(node.right_child(), NodeIndex(12));
         assert_eq!(node.depth(), 2);
@@ -425,6 +465,7 @@ mod tests {
 
         let node = NodeIndex(6);
         assert_eq!(node.parent(), Some(NodeIndex(2)));
+        assert_eq!(node.buddy(), Some(NodeIndex(5)));
         assert_eq!(node.left_child(), NodeIndex(13));
         assert_eq!(node.right_child(), NodeIndex(14));
         assert_eq!(node.depth(), 2);
@@ -433,41 +474,49 @@ mod tests {
         // depth 3, height 0
         let node = NodeIndex(7);
         assert_eq!(node.parent(), Some(NodeIndex(3)));
+        assert_eq!(node.buddy(), Some(NodeIndex(8)));
         assert_eq!(node.depth(), 3);
         assert_eq!(node.offset(), 0);
 
         let node = NodeIndex(8);
         assert_eq!(node.parent(), Some(NodeIndex(3)));
+        assert_eq!(node.buddy(), Some(NodeIndex(7)));
         assert_eq!(node.depth(), 3);
         assert_eq!(node.offset(), 1);
 
         let node = NodeIndex(9);
         assert_eq!(node.parent(), Some(NodeIndex(4)));
+        assert_eq!(node.buddy(), Some(NodeIndex(10)));
         assert_eq!(node.depth(), 3);
         assert_eq!(node.offset(), 2);
 
         let node = NodeIndex(10);
         assert_eq!(node.parent(), Some(NodeIndex(4)));
+        assert_eq!(node.buddy(), Some(NodeIndex(9)));
         assert_eq!(node.depth(), 3);
         assert_eq!(node.offset(), 3);
 
         let node = NodeIndex(11);
         assert_eq!(node.parent(), Some(NodeIndex(5)));
+        assert_eq!(node.buddy(), Some(NodeIndex(12)));
         assert_eq!(node.depth(), 3);
         assert_eq!(node.offset(), 4);
 
         let node = NodeIndex(12);
         assert_eq!(node.parent(), Some(NodeIndex(5)));
+        assert_eq!(node.buddy(), Some(NodeIndex(11)));
         assert_eq!(node.depth(), 3);
         assert_eq!(node.offset(), 5);
 
         let node = NodeIndex(13);
         assert_eq!(node.parent(), Some(NodeIndex(6)));
+        assert_eq!(node.buddy(), Some(NodeIndex(14)));
         assert_eq!(node.depth(), 3);
         assert_eq!(node.offset(), 6);
 
         let node = NodeIndex(14);
         assert_eq!(node.parent(), Some(NodeIndex(6)));
+        assert_eq!(node.buddy(), Some(NodeIndex(13)));
         assert_eq!(node.depth(), 3);
         assert_eq!(node.offset(), 7);
     }
