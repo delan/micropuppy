@@ -8,6 +8,12 @@ pub struct Tree<'s> {
     depth: usize,
 }
 
+#[derive(PartialEq, Eq, Debug)]
+struct Allocation {
+    offset: usize,
+    size: usize,
+}
+
 #[derive(Debug)]
 pub enum Action<T> {
     Yield(T),
@@ -37,7 +43,68 @@ impl<'s> Tree<'s> {
         Self { storage, depth }
     }
 
-    pub fn preorder<T>(&self, mut visitor: impl FnMut(NodeIndex) -> Action<T>) -> Option<T> {
+    fn allocate(&mut self, size: usize) -> Option<Allocation> {
+        eprintln!("allocating size {size}");
+
+        // determine node height and depth for requested allocation
+        let height = match size {
+            0 => return None,
+            1 => 0,
+            _ => (size - 1).ilog2() as usize + 1,
+        };
+        let depth = self.depth - height;
+
+        // find an available node with the requested depth
+        let node_index = self.preorder(|node_index| {
+            eprintln!("preorder visiting {node_index:?}");
+            let node = self.node(node_index);
+
+            if node.allocated || (!node.available && node_index.depth() == depth) {
+                Action::Skip
+            } else if node.available && node_index.depth() == depth {
+                Action::Yield(node_index)
+            } else {
+                Action::Descend
+            }
+        });
+
+        // update the tree
+        node_index.map(|node_index| {
+            // allocate the node
+            self.set_node(
+                node_index,
+                Node {
+                    allocated: true,
+                    available: false,
+                },
+            );
+
+            // mark parents as either allocated or unavailable
+            let mut parent_index = node_index.parent();
+            while let Some(parent_index2) = parent_index {
+                let allocated = self.node(parent_index2.left_child()).allocated
+                    && self.node(parent_index2.right_child()).allocated;
+                let available = false;
+
+                self.set_node(
+                    parent_index2,
+                    Node {
+                        allocated,
+                        available,
+                    },
+                );
+
+                parent_index = parent_index2.parent();
+            }
+
+            Allocation {
+                offset: node_index.offset() << height,
+                size: 1 << height,
+            }
+        })
+    }
+
+    fn preorder<T>(&self, mut visitor: impl FnMut(NodeIndex) -> Action<T>) -> Option<T> {
         fn preorder<T>(
             tree: &Tree,
             node: NodeIndex,
@@ -65,21 +132,17 @@ impl<'s> Tree<'s> {
     pub fn node(&self, node: NodeIndex) -> Node {
         assert!(self.has_node(node));
 
-        let available = !self.storage[2 * node.0];
-        let allocated = self.storage[2 * node.0 + 1];
-
         Node {
-            available,
-            allocated,
+            available: !self.storage[2 * node.0],
+            allocated: self.storage[2 * node.0 + 1],
         }
     }
 
-    pub fn mark_unavailable(&mut self, node: NodeIndex) {
-        self.storage.set(2 * node.0, true);
-    }
+    fn set_node(&mut self, node_index: NodeIndex, node: Node) {
+        assert!(self.has_node(node_index));
 
-    pub fn allocate(&mut self, node: NodeIndex) {
-        self.storage.set(2 * node.0 + 1, true);
+        self.storage.set(2 * node_index.0, !node.available);
+        self.storage.set(2 * node_index.0 + 1, node.allocated);
     }
 
     fn nodes(&self) -> impl Iterator<Item = NodeIndex> + '_ {
@@ -208,6 +271,36 @@ mod tests {
     //    1       2     depth = 1, height = 2
     //  3   4   5   6   depth = 2, height = 1
     // 7 8 9 a b c d e  depth = 3, height = 0
+
+    #[test]
+    fn allocate() {
+        let mut storage = [0; 4];
+        let mut tree = Tree::new(&mut storage, 3);
+
+        // node index 7
+        assert_eq!(tree.allocate(1), Some(Allocation { offset: 0, size: 1 }));
+        eprintln!("{}", tree.dot());
+
+        // node index 8
+        assert_eq!(tree.allocate(1), Some(Allocation { offset: 1, size: 1 }));
+        eprintln!("{}", tree.dot());
+
+        // node index 9
+        assert_eq!(tree.allocate(1), Some(Allocation { offset: 2, size: 1 }));
+        eprintln!("{}", tree.dot());
+
+        // node index 5
+        assert_eq!(tree.allocate(2), Some(Allocation { offset: 4, size: 2 }));
+        eprintln!("{}", tree.dot());
+
+        // node index 10
+        assert_eq!(tree.allocate(1), Some(Allocation { offset: 3, size: 1 }));
+        eprintln!("{}", tree.dot());
+
+        // node index 13
+        assert_eq!(tree.allocate(1), Some(Allocation { offset: 6, size: 1 }));
+        eprintln!("{}", tree.dot());
+    }
 
     #[test]
     fn preorder_descend() {
