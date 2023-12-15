@@ -1,4 +1,4 @@
-use core::{fmt, iter};
+use core::{fmt, iter, mem};
 
 use bitvec::prelude::*;
 
@@ -13,6 +13,12 @@ pub struct Allocation {
     pub offset: usize,
     pub size: usize,
 }
+
+#[derive(PartialEq, Eq, Debug)]
+pub struct OutOfMemoryError;
+
+#[derive(PartialEq, Eq, Debug)]
+pub struct DoubleFreeError;
 
 #[derive(Debug)]
 pub enum Action<T> {
@@ -44,10 +50,10 @@ impl<'s> Tree<'s> {
         Self { storage, depth }
     }
 
-    pub fn allocate(&mut self, size: usize) -> Option<Allocation> {
+    pub fn allocate(&mut self, size: usize) -> Result<Allocation, OutOfMemoryError> {
         // determine block height and depth for requested allocation
         let height = match size {
-            0 => return None,
+            0 => return Err(OutOfMemoryError),
             1 => 0,
             _ => (size - 1).ilog2() as usize + 1,
         };
@@ -71,55 +77,54 @@ impl<'s> Tree<'s> {
             }
         });
 
-        // if we found a free block, update the tree and generate the actual allocation offset and
-        // size
-        block.map(|block| {
-            // mark the block as allocated
-            self.set_state(block, BlockState::Allocated);
+        // if we didn't find a block, we're out of memory (at the requested allocation size)
+        let block = block.ok_or(OutOfMemoryError)?;
 
-            // we know the state of our allocated block has changed from free to allocated.
-            //
-            // we now need to mark every superblock of our block as either subdivided or full.
-            // - a block with two full or allocated sub-blocks becomes full (no new allocations can
-            //   take place within the block)
-            // - otherwise, the block must have at least one subdivided sub-block, and thus becomes
-            //   subdivided (the block cannot be allocated, but it contains sub-blocks available for
-            //   allocation)
-            //
-            // since we just allocated a sub-block, it's not possible for any of the superblocks to
-            // become free.
-            let mut buddies = self.buddies(block);
+        // mark the block as allocated
+        self.set_state(block, BlockState::Allocated);
 
-            // mark as many superblocks as full as possible
-            for (buddy, superblock) in &mut buddies {
-                let superblock_is_full = match self.state(buddy) {
-                    BlockState::Full | BlockState::Allocated => true,
-                    BlockState::Free | BlockState::Subdivided => false,
-                };
+        // we know the state of our allocated block has changed from free to allocated.
+        //
+        // we now need to mark every superblock of our block as either subdivided or full.
+        // - a block with two full or allocated sub-blocks becomes full (no new allocations can
+        //   take place within the block)
+        // - otherwise, the block must have at least one subdivided sub-block, and thus becomes
+        //   subdivided (the block cannot be allocated, but it contains sub-blocks available for
+        //   allocation)
+        //
+        // since we just allocated a sub-block, it's not possible for any of the superblocks to
+        // become free.
+        let mut buddies = self.buddies(block);
 
-                if !superblock_is_full {
-                    // since the item has been consumed from the iterator, we need to mark the
-                    // superblock as subdivided here otherwise it will be missed by the loop below
-                    self.set_state(superblock, BlockState::Subdivided);
-                    break;
-                }
+        // mark as many superblocks as full as possible
+        for (buddy, superblock) in &mut buddies {
+            let superblock_is_full = match self.state(buddy) {
+                BlockState::Full | BlockState::Allocated => true,
+                BlockState::Free | BlockState::Subdivided => false,
+            };
 
-                self.set_state(superblock, BlockState::Full);
-            }
-
-            // mark remaining superblocks as subdivided
-            for (_, superblock) in &mut buddies {
+            if !superblock_is_full {
+                // since the item has been consumed from the iterator, we need to mark the
+                // superblock as subdivided here otherwise it will be missed by the loop below
                 self.set_state(superblock, BlockState::Subdivided);
+                break;
             }
 
-            Allocation {
-                offset: block.offset() << height,
-                size: 1 << height,
-            }
+            self.set_state(superblock, BlockState::Full);
+        }
+
+        // mark remaining superblocks as subdivided
+        for (_, superblock) in &mut buddies {
+            self.set_state(superblock, BlockState::Subdivided);
+        }
+
+        Ok(Allocation {
+            offset: block.offset() << height,
+            size: 1 << height,
         })
     }
 
-    pub fn free(&mut self, offset: usize) {
+    pub fn free(&mut self, offset: usize) -> Result<(), DoubleFreeError> {
         // find the block corresponding to this allocation - the offset does not uniquely identify a
         // block, but does uniquely identify an allocation
         let block = self.preorder(|block| {
@@ -143,7 +148,7 @@ impl<'s> Tree<'s> {
 
         // if we couldn't find the block, we've either been passed garbage or we're experiencing a
         // double free
-        let block = block.expect("allocation could not be found (double free?)");
+        let block = block.ok_or(DoubleFreeError)?;
 
         // mark the block as free
         self.set_state(block, BlockState::Free);
@@ -176,6 +181,8 @@ impl<'s> Tree<'s> {
         for (_, superblock) in &mut buddies {
             self.set_state(superblock, BlockState::Subdivided);
         }
+
+        Ok(())
     }
 
     fn preorder<T>(&self, mut visitor: impl FnMut(BlockIndex) -> Action<T>) -> Option<T> {
@@ -209,27 +216,18 @@ impl<'s> Tree<'s> {
         let index = 2 * node.0;
         let state = self.storage[index..index + 2].load::<u8>();
 
-        match state {
-            0 => BlockState::Free,
-            1 => BlockState::Subdivided,
-            2 => BlockState::Full,
-            3 => BlockState::Allocated,
-            _ => unreachable!(),
-        }
+        // SAFETY: BlockState is repr(u8) and variants are numbered such that they fit within two
+        // bits.
+        unsafe { mem::transmute::<u8, BlockState>(state) }
     }
 
     fn set_state(&mut self, node: BlockIndex, state: BlockState) {
         assert!(self.has_block(node));
 
-        let state = match state {
-            BlockState::Free => 0,
-            BlockState::Subdivided => 1,
-            BlockState::Full => 2,
-            BlockState::Allocated => 3,
-        };
-
         let index = 2 * node.0;
-        self.storage[index..index + 2].store::<u8>(state);
+        let state = state as u8;
+
+        self.storage[index..index + 2].store(state);
     }
 
     fn blocks(&self) -> impl Iterator<Item = BlockIndex> + '_ {
@@ -265,9 +263,10 @@ impl<'s> Tree<'s> {
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
+#[repr(u8)]
 pub enum BlockState {
     /// Block has no allocated sub-blocks.
-    Free,
+    Free = 0,
     /// Block has been subdivided and has one or more allocated sub-blocks and one or more
     /// reachable and free sub-blocks.
     Subdivided,
@@ -291,11 +290,19 @@ impl BlockIndex {
     }
 
     pub fn superblock(self) -> Option<Self> {
-        (!self.is_root()).then(|| Self((self.0 - 1) / 2))
+        if !self.is_root() {
+            Some(Self((self.0 - 1) / 2))
+        } else {
+            None
+        }
     }
 
     pub fn buddy(self) -> Option<Self> {
-        (!self.is_root()).then(|| Self(((self.0 - 1) ^ 1) + 1))
+        if !self.is_root() {
+            Some(Self(((self.0 - 1) ^ 1) + 1))
+        } else {
+            None
+        }
     }
 
     pub fn subblocks(self) -> (Self, Self) {
@@ -375,34 +382,34 @@ mod tests {
         let mut tree = Tree::new(&mut storage, 3);
 
         // node index 7
-        assert_eq!(tree.allocate(1), Some(Allocation { offset: 0, size: 1 }));
+        assert_eq!(tree.allocate(1), Ok(Allocation { offset: 0, size: 1 }));
         eprintln!("{}", tree.dot());
 
         // node index 8
-        assert_eq!(tree.allocate(1), Some(Allocation { offset: 1, size: 1 }));
+        assert_eq!(tree.allocate(1), Ok(Allocation { offset: 1, size: 1 }));
         eprintln!("{}", tree.dot());
 
         // node index 9
-        assert_eq!(tree.allocate(1), Some(Allocation { offset: 2, size: 1 }));
+        assert_eq!(tree.allocate(1), Ok(Allocation { offset: 2, size: 1 }));
         eprintln!("{}", tree.dot());
 
         // node index 5
-        assert_eq!(tree.allocate(2), Some(Allocation { offset: 4, size: 2 }));
+        assert_eq!(tree.allocate(2), Ok(Allocation { offset: 4, size: 2 }));
         eprintln!("{}", tree.dot());
 
         // node index 10
-        assert_eq!(tree.allocate(1), Some(Allocation { offset: 3, size: 1 }));
+        assert_eq!(tree.allocate(1), Ok(Allocation { offset: 3, size: 1 }));
         eprintln!("{}", tree.dot());
 
         // node index 13
-        assert_eq!(tree.allocate(1), Some(Allocation { offset: 6, size: 1 }));
+        assert_eq!(tree.allocate(1), Ok(Allocation { offset: 6, size: 1 }));
         eprintln!("{}", tree.dot());
 
         // node index 14
-        assert_eq!(tree.allocate(1), Some(Allocation { offset: 7, size: 1 }));
+        assert_eq!(tree.allocate(1), Ok(Allocation { offset: 7, size: 1 }));
         eprintln!("{}", tree.dot());
 
-        assert_eq!(tree.allocate(1), None);
+        assert_eq!(tree.allocate(1), Err(OutOfMemoryError));
     }
 
     #[test]

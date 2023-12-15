@@ -1,41 +1,88 @@
+#![cfg(feature = "cli")]
+use std::io::{self, Write};
+use std::{env, fs};
+
 use buddy_alloc::tree::Tree;
+
+enum Command<'l> {
+    One(&'l str),
+    Two(&'l str, &'l str),
+}
+
+enum Action {
+    Continue,
+    Quit,
+}
 
 fn main() {
     let mut storage = [0; 8];
     let mut tree = Tree::new(&mut storage, 4);
 
-    println!("// initial state");
-    println!("{}", tree.dot());
+    loop {
+        print!("> ");
+        io::stdout()
+            .flush()
+            .expect("flushing stdout should succeed");
 
-    println!("// alloc1, size 1:");
-    let alloc1 = tree.allocate(1).unwrap();
-    println!("// {:?}", alloc1);
-    println!("{}", tree.dot());
+        let mut line = String::new();
+        io::stdin()
+            .read_line(&mut line)
+            .expect("read_line should succeed");
 
-    println!("// alloc2, size 1:");
-    let alloc2 = tree.allocate(1).unwrap();
-    println!("{:?}", alloc2);
-    println!("{}", tree.dot());
+        let line = line.trim();
+        let command = match line.split_once(" ") {
+            None => Command::One(&line),
+            Some((command, arg)) => Command::Two(command, arg),
+        };
 
-    println!("// alloc3, size 2:");
-    let alloc3 = tree.allocate(2).unwrap();
-    println!("{:?}", alloc3);
-    println!("{}", tree.dot());
+        match run_command(command, &mut tree) {
+            Ok(Action::Continue) => {}
+            Ok(Action::Quit) => break,
+            Err(e) => println!("error: {e}"),
+        }
+    }
+}
 
-    println!("// alloc4, size 8:");
-    let alloc4 = tree.allocate(8).unwrap();
-    println!("{:?}", alloc4);
-    println!("{}", tree.dot());
+fn run_command(command: Command, tree: &mut Tree) -> Result<Action, &'static str> {
+    let dot_path = env::temp_dir().join("buddy-alloc.dot");
 
-    // println!("// free alloc2");
-    // tree.free(alloc2.offset);
-    // println!("{}", tree.dot());
+    match command {
+        Command::One("help") => {
+            println!("commands:");
+            println!("  exit|quit|q");
+            println!("  show");
+            println!("  malloc <size in blocks>");
+            println!("  free <offset>");
+        }
+        Command::One("exit" | "quit" | "q") => return Ok(Action::Quit),
+        Command::One("show") => {
+            opener::open(&dot_path).map_err(|_| "could not open dot file")?;
 
-    // println!("// free alloc3");
-    // tree.free(alloc3.offset);
-    // println!("{}", tree.dot());
+            println!("opened {} in system dot viewer", dot_path.display());
+        }
+        Command::Two("malloc", size) => {
+            let size = size.parse().map_err(|_| "could not parse size")?;
+            let allocation = tree.allocate(size).map_err(|_| "out of memory")?;
 
-    println!("// free alloc1");
-    tree.free(alloc1.offset);
-    println!("{}", tree.dot());
+            println!(
+                "allocated {} block{} (requested {}) at offset {}",
+                allocation.size,
+                if size != 1 { "s" } else { "" },
+                size,
+                allocation.offset
+            );
+        }
+        Command::Two("free", offset) => {
+            let offset = offset.parse().map_err(|_| "could not parse offset")?;
+            tree.free(offset).map_err(|_| "double free")?;
+
+            println!("freed allocation at offset {}", offset);
+        }
+        _ => return Err("unknown command"),
+    };
+
+    let dot = format!("{}", tree.dot());
+    fs::write(&dot_path, dot).map_err(|_| "could not write dot file")?;
+
+    Ok(Action::Continue)
 }
