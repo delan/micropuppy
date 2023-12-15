@@ -1,211 +1,70 @@
 // #![cfg_attr(not(test), no_std)]
-use core::{fmt, iter};
+mod tree;
 
-use bitvec::prelude::*;
+use tree::{Action, Tree};
 
-pub struct Tree<'s> {
-    edges: &'s mut BitSlice<u8, Msb0>,
-    depth: usize,
+#[derive(Debug)]
+struct BuddyAllocator<'s> {
+    tree: Tree<'s>,
 }
 
-#[derive(PartialEq, Debug)]
-pub struct Block {
+#[derive(PartialEq, Eq, Debug)]
+struct Allocation {
     offset: usize,
     size: usize,
 }
 
-impl<'s> Tree<'s> {
-    pub fn new(storage: &'s mut [u8], depth: usize) -> Self {
-        // a tree with depth 0 has a single node, and is just a boolean
-        assert!(depth >= 1, "tree must have depth of at least 1");
-
-        // we must be able to store a complete tree's worth of edges
-        let edges = storage.view_bits_mut();
-        let num_nodes = (1 << (depth + 1)) - 1;
-        let num_edges = num_nodes - 1; // every node except the root has one edge
-        assert!(
-            edges.len() >= num_edges,
-            "storage must be at least {num_edges} bits wide to store a tree of depth {depth}"
-        );
-
-        // initially, every edge is present (i.e. every block is unallocated)
-        edges.fill(true);
-
-        Self { edges, depth }
+impl<'s> BuddyAllocator<'s> {
+    fn new(storage: &'s mut [u8]) -> Self {
+        Self {
+            // TODO: depth from pool size
+            tree: Tree::new(storage, 3),
+        }
     }
 
-    pub fn allocate(&mut self, size: usize) -> Option<Block> {
+    fn allocate(&mut self, size: usize) -> Option<Allocation> {
         let height = match size {
             0 => return None,
             1 => 0,
             _ => (size - 1).ilog2() as usize + 1,
         };
-        let depth = self.depth - height;
+        let depth = 3 - height; // TODO: use tree depth
 
-        // find a free node at the correct depth
-        fn find(tree: &Tree, node: NodeIndex, depth: usize) -> Option<NodeIndex> {
-            if node.depth() == depth && tree.is_node_free(node) {
-                return Some(node);
-            }
+        let node = self.tree.preorder(|node_index| {
+            let node = self.tree.node(node_index);
 
-            let (left, left_edge) = node.left();
-            if tree.is_edge_free(left_edge) {
-                if let Some(left) = find(tree, left, depth) {
-                    return Some(left);
-                }
-            }
-
-            let (right, right_edge) = node.right();
-            if tree.is_edge_free(right_edge) {
-                if let Some(right) = find(tree, right, depth) {
-                    return Some(right);
-                }
-            }
-
-            None
-        }
-
-        let node = find(self, NodeIndex::root(), depth)?;
-        dbg!(node, node.depth(), node.offset());
-
-        let mut blblb = Some(node);
-        while let Some(bbb) = blblb {
-            if let Some((parent, parent_edge)) = bbb.parent() {
-                self.edges.set(parent_edge.0, false);
-
-                if !self.is_edge_free(parent_edge.buddy()) {
-                    blblb = Some(parent);
-                } else {
-                    break;
-                }
+            if node.allocated {
+                Action::Skip
+            } else if node.available && node_index.depth() == depth {
+                Action::Yield(node_index)
             } else {
-                break;
+                Action::Descend
             }
-        }
-        self.edges.set(node.parent().unwrap().1 .0, false);
+        });
 
-        // let mut blorp = Some((EdgeIndex(node.0 - 1), node));
-        // while let Some((blap, blop)) = blorp {
-        //     self.edges.set(blap.0, false);
-        //     if self.is_edge_free(blap.buddy()) {
-        //         break;
-        //     }
+        dbg!(node);
 
-        //     blorp = blop.parent();
-        // }
+        node.map(|node| {
+            self.tree.allocate(node);
+            self.tree.mark_unavailable(node);
 
-        Some(Block {
-            offset: node.offset() << (self.depth - node.depth()),
-            size: 1 << height,
+            let mut parent_index = node.parent();
+            while let Some(node_index) = parent_index {
+                self.tree.mark_unavailable(node_index);
+
+                let (left_index, right_index) = node_index.children();
+                if self.tree.node(left_index).allocated && self.tree.node(right_index).allocated {
+                    self.tree.allocate(node_index);
+                }
+
+                parent_index = node_index.parent();
+            }
+
+            Allocation {
+                offset: node.offset() << height,
+                size: 1 << height,
+            }
         })
-    }
-
-    fn is_node_free(&self, node: NodeIndex) -> bool {
-        if node.depth() != self.depth {
-            let (_, left_edge) = node.left();
-            let (_, right_edge) = node.right();
-
-            self.is_edge_free(left_edge) && self.is_edge_free(right_edge)
-        } else {
-            let (_, parent_edge) = node.parent().unwrap();
-            self.is_edge_free(parent_edge)
-        }
-    }
-
-    fn is_edge_free(&self, edge: EdgeIndex) -> bool {
-        let num_nodes = (1 << (self.depth + 1)) - 1;
-        let num_edges = num_nodes - 1;
-
-        edge.0 < num_edges && self.edges[edge.0]
-    }
-
-    fn nodes(&self) -> impl Iterator<Item = NodeIndex> + '_ {
-        let num_nodes = (1 << (self.depth + 1)) - 1;
-
-        (0..num_nodes).map(NodeIndex)
-    }
-
-    fn dot(&self) -> Dot {
-        Dot(self)
-    }
-}
-
-#[derive(Clone, Copy, Debug)]
-#[repr(transparent)]
-struct NodeIndex(usize);
-
-#[derive(Clone, Copy, Debug)]
-#[repr(transparent)]
-struct EdgeIndex(usize);
-
-impl NodeIndex {
-    fn root() -> NodeIndex {
-        NodeIndex(0)
-    }
-
-    fn parent(self) -> Option<(NodeIndex, EdgeIndex)> {
-        if self.0 != 0 {
-            let parent = NodeIndex((self.0 - 1) / 2);
-            let parent_edge = EdgeIndex(self.0 - 1);
-
-            Some((parent, parent_edge))
-        } else {
-            None
-        }
-    }
-
-    fn left(self) -> (NodeIndex, EdgeIndex) {
-        let left = NodeIndex(2 * self.0 + 1);
-        let left_edge = EdgeIndex(2 * self.0);
-
-        (left, left_edge)
-    }
-
-    fn right(self) -> (NodeIndex, EdgeIndex) {
-        let right = NodeIndex(2 * self.0 + 2);
-        let right_edge = EdgeIndex(2 * self.0 + 1);
-
-        (right, right_edge)
-    }
-
-    fn depth(self) -> usize {
-        (self.0 + 1).ilog2() as usize
-    }
-
-    fn offset(self) -> usize {
-        self.0 + 1 - (1 << self.depth())
-    }
-}
-
-impl EdgeIndex {
-    fn buddy(self) -> EdgeIndex {
-        Self(self.0 ^ 1)
-    }
-}
-
-struct Dot<'t, 's>(&'t Tree<'s>);
-
-impl fmt::Display for Dot<'_, '_> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let tree = self.0;
-
-        writeln!(f, "digraph {{")?;
-        for node in tree.nodes() {
-            writeln!(f, "  n{};", node.0)?;
-
-            let (left, left_edge) = node.left();
-            if tree.is_edge_free(left_edge) {
-                writeln!(f, "  n{} -> n{};", node.0, left.0)?;
-            }
-
-            let (right, right_edge) = node.right();
-            if tree.is_edge_free(right_edge) {
-                writeln!(f, "  n{} -> n{};", node.0, right.0)?;
-            }
-        }
-        write!(f, "}}")?;
-
-        Ok(())
     }
 }
 
@@ -214,31 +73,43 @@ mod tests {
     use super::*;
 
     #[test]
-    fn allocate() {
-        let mut tree = [0; 2];
-        let mut tree = Tree::new(&mut tree, 3);
-        //        0         size = 8
-        //    0       4     size = 4
-        //  0   2   4   6   size = 2
-        // 0 1 2 3 4 5 6 7  size = 1
+    fn test() {
+        let mut storage = [0; 4];
+        let mut allocator = BuddyAllocator::new(&mut storage);
+        //        0         depth = 0, order = 3
+        //    0       4     depth = 1, order = 2
+        //  0   2   4   6   depth = 2, order = 1
+        // 0 1 2 3 4 5 6 7  depth = 3, order = 0
 
-        eprintln!("{}", tree.dot());
-
-        assert_eq!(tree.allocate(1), Some(Block { offset: 0, size: 1 }));
-        eprintln!("{}", tree.dot());
-
-        assert_eq!(tree.allocate(1), Some(Block { offset: 1, size: 1 }));
-        eprintln!("{}", tree.dot());
-
-        assert_eq!(tree.allocate(1), Some(Block { offset: 2, size: 1 }));
-        eprintln!("{}", tree.dot());
-
-        assert_eq!(tree.allocate(3), Some(Block { offset: 4, size: 4 }));
-        eprintln!("{}", tree.dot());
-
-        // assert_eq!(tree.allocate(1), Some(0));
-        // assert_eq!(tree.allocate(1), Some(1));
-        // assert_eq!(tree.allocate(1), Some(2));
-        // assert_eq!(tree.allocate(2), Some(4));
+        assert_eq!(
+            allocator.allocate(1),
+            Some(Allocation { offset: 0, size: 1 })
+        );
+        eprintln!("{}", allocator.tree.dot());
+        assert_eq!(
+            allocator.allocate(1),
+            Some(Allocation { offset: 1, size: 1 })
+        );
+        eprintln!("{}", allocator.tree.dot());
+        assert_eq!(
+            allocator.allocate(1),
+            Some(Allocation { offset: 2, size: 1 })
+        );
+        eprintln!("{}", allocator.tree.dot());
+        assert_eq!(
+            allocator.allocate(2),
+            Some(Allocation { offset: 4, size: 2 })
+        );
+        eprintln!("{}", allocator.tree.dot());
+        assert_eq!(
+            allocator.allocate(1),
+            Some(Allocation { offset: 3, size: 1 })
+        );
+        eprintln!("{}", allocator.tree.dot());
+        assert_eq!(
+            allocator.allocate(1),
+            Some(Allocation { offset: 6, size: 1 })
+        );
+        eprintln!("{}", allocator.tree.dot());
     }
 }
