@@ -15,8 +15,24 @@ enum Action {
 }
 
 fn main() {
-    let mut storage = [0; 8];
-    let mut tree = Tree::new(&mut storage, 4);
+    let args = env::args();
+    let depth = args
+        .skip(1)
+        .next()
+        .ok_or("expected tree depth as first command line argument")
+        .and_then(|depth| depth.parse().map_err(|_| "could not parse depth"));
+
+    let depth = match depth {
+        Ok(depth) => depth,
+        Err(e) => {
+            println!("error: {e}");
+            return;
+        }
+    };
+
+    // 64 bytes should be enough for anyone
+    let mut storage = [0; 64];
+    let mut tree = Tree::new(&mut storage, depth);
 
     loop {
         print!("> ");
