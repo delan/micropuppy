@@ -9,9 +9,9 @@ pub struct Tree<'s> {
 }
 
 #[derive(PartialEq, Eq, Debug)]
-struct Allocation {
-    offset: usize,
-    size: usize,
+pub struct Allocation {
+    pub offset: usize,
+    pub size: usize,
 }
 
 #[derive(Debug)]
@@ -43,7 +43,7 @@ impl<'s> Tree<'s> {
         Self { storage, depth }
     }
 
-    fn allocate(&mut self, size: usize) -> Option<Allocation> {
+    pub fn allocate(&mut self, size: usize) -> Option<Allocation> {
         eprintln!("allocating size {size}");
 
         // determine node height and depth for requested allocation
@@ -60,9 +60,9 @@ impl<'s> Tree<'s> {
 
             let node_is_requested_depth = node.depth() == depth;
             match self.state(node) {
-                NodeState::Allocated => Action::Skip,
-                NodeState::Unavailable if node_is_requested_depth => Action::Skip,
-                NodeState::Available if node_is_requested_depth => Action::Yield(node),
+                NodeState::Full | NodeState::Allocated => Action::Skip,
+                NodeState::Subdivided if node_is_requested_depth => Action::Skip,
+                NodeState::Free if node_is_requested_depth => Action::Yield(node),
                 _ => Action::Descend,
             }
         });
@@ -72,10 +72,11 @@ impl<'s> Tree<'s> {
             // mark the node as allocated
             self.set_state(node, NodeState::Allocated);
 
-            // we know the node corresponding to our allocation has just gone from (unallocated and
-            // available) to (allocated and unavailable). we need to do two things:
-            // - mark every node in our node's path to the root as, at minimum, unavailable
-            //   - a node with one or more allocated children can't be allocated
+            // we know the node corresponding to our allocation has just gone from Free to
+            // Allocated. we need to do two things:
+            // - mark every node in our node's path to the root as, at minimum, Subdivided
+            //   - a node with one allocated child becomes unavailable
+            //   - a node with two allocated children becomes allocated
             // - as we climb the tree, if our node's buddy (sibling) is also allocated:
             //   - both the children of the node's parent must be allocated
             //   - thus, the parent should be marked as allocated too
@@ -83,19 +84,19 @@ impl<'s> Tree<'s> {
 
             // mark parents as allocated until we reach a node where our buddy isn't allocated
             for (buddy, parent) in &mut buddies {
-                if self.state(buddy) != NodeState::Allocated {
+                if self.state(buddy).has_reachable_unallocated_children() {
                     // since the item has been consumed from the iterator, we need to mark the
                     // parent as unavailable here otherwise it will be missed by the loop below
-                    self.set_state(parent, NodeState::Unavailable);
+                    self.set_state(parent, NodeState::Subdivided);
                     break;
                 }
 
-                self.set_state(parent, NodeState::Allocated);
+                self.set_state(parent, NodeState::Full);
             }
 
-            // mark remaining parents as unavailable
+            // mark remaining parents as subdivided
             for (_, parent) in &mut buddies {
-                self.set_state(parent, NodeState::Unavailable);
+                self.set_state(parent, NodeState::Subdivided);
             }
 
             Allocation {
@@ -103,6 +104,58 @@ impl<'s> Tree<'s> {
                 size: 1 << height,
             }
         })
+    }
+
+    pub fn free(&mut self, offset: usize) {
+        let node = self.preorder(|node| {
+            eprintln!("preorder visiting {node:?} -> {:?}", self.state(node));
+
+            match self.state(node) {
+                NodeState::Free => Action::Skip,
+                NodeState::Subdivided | NodeState::Full => Action::Descend,
+                NodeState::Allocated => {
+                    let height = dbg!(self.depth - node.depth());
+                    if dbg!(node.offset() << height) == dbg!(offset) {
+                        Action::Yield(node)
+                    } else {
+                        Action::Descend
+                    }
+                }
+            }
+        });
+
+        dbg!(node);
+
+        // if we couldn't find the node, we've either been passed garbage or we're experiencing a
+        // double free
+        let node = node.expect("allocation being freed should be allocated (double free?)");
+
+        // mark the node as available
+        self.set_state(node, NodeState::Free);
+
+        // we know the node corresponding to our allocation has just gone from Allocated to Free. we
+        // need to do two things:
+        // - mark every node in our node's path to the root as, at minimum, Subdivided
+        //   - a node with no allocated children becomes available
+        //   - a node with one allocated child becomes unavailable
+        let mut buddies = self.buddies(node);
+
+        // mark parents as Free until we reach a node where our buddy isn't available
+        for (buddy, parent) in &mut buddies {
+            if self.state(buddy) != NodeState::Free {
+                // since the item has been consumed from the iterator, we need to mark the
+                // parent as unavailable here otherwise it will be missed by the loop below
+                self.set_state(parent, NodeState::Subdivided);
+                break;
+            }
+
+            self.set_state(parent, NodeState::Free);
+        }
+
+        // mark remaining parents as unavailable
+        for (_, parent) in &mut buddies {
+            self.set_state(parent, NodeState::Subdivided);
+        }
     }
 
     fn preorder<T>(&self, mut visitor: impl FnMut(NodeIndex) -> Action<T>) -> Option<T> {
@@ -133,12 +186,13 @@ impl<'s> Tree<'s> {
     fn state(&self, node: NodeIndex) -> NodeState {
         assert!(self.has_node(node));
 
-        let unavailable = self.storage[2 * node.0];
-        let allocated = self.storage[2 * node.0 + 1];
+        let bit0 = self.storage[2 * node.0];
+        let bit1 = self.storage[2 * node.0 + 1];
 
-        match (unavailable, allocated) {
-            (false, _) => NodeState::Available,
-            (true, false) => NodeState::Unavailable,
+        match (bit0, bit1) {
+            (false, false) => NodeState::Free,
+            (false, true) => NodeState::Subdivided,
+            (true, false) => NodeState::Full,
             (true, true) => NodeState::Allocated,
         }
     }
@@ -146,14 +200,15 @@ impl<'s> Tree<'s> {
     fn set_state(&mut self, node: NodeIndex, state: NodeState) {
         assert!(self.has_node(node));
 
-        let (unavailable, allocated) = match state {
-            NodeState::Available => (false, false),
-            NodeState::Unavailable => (true, false),
+        let (bit0, bit1) = match state {
+            NodeState::Free => (false, false),
+            NodeState::Subdivided => (false, true),
+            NodeState::Full => (true, false),
             NodeState::Allocated => (true, true),
         };
 
-        self.storage.set(2 * node.0, unavailable);
-        self.storage.set(2 * node.0 + 1, allocated);
+        self.storage.set(2 * node.0, bit0);
+        self.storage.set(2 * node.0 + 1, bit1);
     }
 
     fn nodes(&self) -> impl Iterator<Item = NodeIndex> + '_ {
@@ -190,12 +245,23 @@ impl<'s> Tree<'s> {
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum NodeState {
-    /// has unallocated children
-    Available,
-    /// has no unallocated children
-    Unavailable,
-    /// allocated, or all children allocated
+    /// Has no allocated children.
+    Free,
+    /// Has one or more allocated children and one or more reachable, unallocated children.
+    Subdivided,
+    /// Has no reachable, unallocated children.
+    Full,
+    /// Has been allocated.
     Allocated,
+}
+
+impl NodeState {
+    fn has_reachable_unallocated_children(self) -> bool {
+        match self {
+            Self::Free | Self::Subdivided => true,
+            Self::Full | Self::Allocated => false,
+        }
+    }
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -258,11 +324,13 @@ impl fmt::Display for Dot<'_, '_> {
         writeln!(f, "  node [style=filled, fixedsize=true];")?;
         for node_index in tree.nodes() {
             const GREEN: &str = "#9dd5c0";
+            const BLUE: &str = "#27a4dd";
             const RED: &str = "#f1646c";
             let (fillcolor, shape) = match tree.state(node_index) {
-                NodeState::Available => (GREEN, "circle"),
-                NodeState::Unavailable => (RED, "circle"),
-                NodeState::Allocated => (RED, "doublecircle"),
+                NodeState::Free => (GREEN, "circle"),
+                NodeState::Subdivided => (BLUE, "Mcircle"),
+                NodeState::Full => (RED, "Msquare"),
+                NodeState::Allocated => (RED, "square"),
             };
 
             writeln!(

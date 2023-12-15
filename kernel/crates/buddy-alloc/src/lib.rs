@@ -1,5 +1,5 @@
 // #![cfg_attr(not(test), no_std)]
-mod tree;
+pub mod tree;
 
 // use tree::{Action, Tree};
 
