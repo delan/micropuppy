@@ -1,8 +1,8 @@
 use buddy_alloc::tree::Tree;
 
 fn main() {
-    let mut storage = [0; 4];
-    let mut tree = Tree::new(&mut storage, 3);
+    let mut storage = [0; 8];
+    let mut tree = Tree::new(&mut storage, 4);
 
     println!("// initial state");
     println!("{}", tree.dot());
@@ -22,13 +22,18 @@ fn main() {
     println!("{:?}", alloc3);
     println!("{}", tree.dot());
 
-    println!("// free alloc2");
-    tree.free(alloc2.offset);
+    println!("// alloc4, size 8:");
+    let alloc4 = tree.allocate(8).unwrap();
+    println!("{:?}", alloc4);
     println!("{}", tree.dot());
 
-    println!("// free alloc3");
-    tree.free(alloc3.offset);
-    println!("{}", tree.dot());
+    // println!("// free alloc2");
+    // tree.free(alloc2.offset);
+    // println!("{}", tree.dot());
+
+    // println!("// free alloc3");
+    // tree.free(alloc3.offset);
+    // println!("{}", tree.dot());
 
     println!("// free alloc1");
     tree.free(alloc1.offset);

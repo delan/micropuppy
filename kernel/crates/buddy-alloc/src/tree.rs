@@ -23,13 +23,13 @@ pub enum Action<T> {
 
 impl<'s> Tree<'s> {
     pub fn new(storage: &'s mut [u8], depth: usize) -> Self {
-        // a tree with depth 0 has a single node, and is just a boolean
+        // a tree with depth 0 has a single block, and its state would just be a boolean
         assert!(depth >= 1, "tree must have depth of at least 1");
 
-        // we must be able to store a complete tree's worth of nodes
+        // we must be able to store a complete tree's worth of blocks
         let storage = storage.view_bits_mut();
-        let node_count = (1 << (depth + 1)) - 1;
-        let bits = node_count * 2;
+        let block_count = (1 << (depth + 1)) - 1;
+        let bits = block_count * 2;
         assert!(
             storage.len() >= bits,
             "storage must be at least {bits} bits wide to store a tree of depth {depth}"
@@ -37,16 +37,15 @@ impl<'s> Tree<'s> {
 
         let storage = &mut storage[0..bits];
 
-        // initially, every node is unallocated and available
+        // initially, every block is free
+        // TODO: can we do this without inlining the encoding of BlockState::Free?
         storage.fill(false);
 
         Self { storage, depth }
     }
 
     pub fn allocate(&mut self, size: usize) -> Option<Allocation> {
-        eprintln!("allocating size {size}");
-
-        // determine node height and depth for requested allocation
+        // determine block height and depth for requested allocation
         let height = match size {
             0 => return None,
             1 => 0,
@@ -54,187 +53,209 @@ impl<'s> Tree<'s> {
         };
         let depth = self.depth - height;
 
-        // find an available node with the requested depth
-        let node = self.preorder(|node| {
-            eprintln!("preorder visiting {node:?}");
-
-            let node_is_requested_depth = node.depth() == depth;
-            match self.state(node) {
-                NodeState::Full | NodeState::Allocated => Action::Skip,
-                NodeState::Subdivided if node_is_requested_depth => Action::Skip,
-                NodeState::Free if node_is_requested_depth => Action::Yield(node),
-                _ => Action::Descend,
+        // find a free block at the requested depth
+        let block = self.preorder(|block| {
+            let at_requested_depth = block.depth() == depth;
+            match (at_requested_depth, self.state(block)) {
+                // if we're at the requested depth and have found a free block, claim it
+                (true, BlockState::Free) => Action::Yield(block),
+                // ...but, if the block isn't free, there's no point descending further since the
+                // block's sub-blocks will all have a higher depth (and thus smaller size) than
+                // requested.
+                (true, _) => Action::Skip,
+                // if we're not yet at the requested depth, don't descend into blocks with no
+                // reachable, free sub-blocks
+                (false, BlockState::Full | BlockState::Allocated) => Action::Skip,
+                // ...but, descend into blocks that may have reachable, free sub-blocks.
+                (false, _) => Action::Descend,
             }
         });
 
-        // update the tree and generate the actual allocation offset and size
-        node.map(|node| {
-            // mark the node as allocated
-            self.set_state(node, NodeState::Allocated);
+        // if we found a free block, update the tree and generate the actual allocation offset and
+        // size
+        block.map(|block| {
+            // mark the block as allocated
+            self.set_state(block, BlockState::Allocated);
 
-            // we know the node corresponding to our allocation has just gone from Free to
-            // Allocated. we need to do two things:
-            // - mark every node in our node's path to the root as, at minimum, Subdivided
-            //   - a node with one allocated child becomes unavailable
-            //   - a node with two allocated children becomes allocated
-            // - as we climb the tree, if our node's buddy (sibling) is also allocated:
-            //   - both the children of the node's parent must be allocated
-            //   - thus, the parent should be marked as allocated too
-            let mut buddies = self.buddies(node);
+            // we know the state of our allocated block has changed from free to allocated.
+            //
+            // we now need to mark every superblock of our block as either subdivided or full.
+            // - a block with two full or allocated sub-blocks becomes full (no new allocations can
+            //   take place within the block)
+            // - otherwise, the block must have at least one subdivided sub-block, and thus becomes
+            //   subdivided (the block cannot be allocated, but it contains sub-blocks available for
+            //   allocation)
+            //
+            // since we just allocated a sub-block, it's not possible for any of the superblocks to
+            // become free.
+            let mut buddies = self.buddies(block);
 
-            // mark parents as allocated until we reach a node where our buddy isn't allocated
-            for (buddy, parent) in &mut buddies {
-                if self.state(buddy).has_reachable_unallocated_children() {
+            // mark as many superblocks as full as possible
+            for (buddy, superblock) in &mut buddies {
+                let superblock_is_full = match self.state(buddy) {
+                    BlockState::Full | BlockState::Allocated => true,
+                    BlockState::Free | BlockState::Subdivided => false,
+                };
+
+                if !superblock_is_full {
                     // since the item has been consumed from the iterator, we need to mark the
-                    // parent as unavailable here otherwise it will be missed by the loop below
-                    self.set_state(parent, NodeState::Subdivided);
+                    // superblock as subdivided here otherwise it will be missed by the loop below
+                    self.set_state(superblock, BlockState::Subdivided);
                     break;
                 }
 
-                self.set_state(parent, NodeState::Full);
+                self.set_state(superblock, BlockState::Full);
             }
 
-            // mark remaining parents as subdivided
-            for (_, parent) in &mut buddies {
-                self.set_state(parent, NodeState::Subdivided);
+            // mark remaining superblocks as subdivided
+            for (_, superblock) in &mut buddies {
+                self.set_state(superblock, BlockState::Subdivided);
             }
 
             Allocation {
-                offset: node.offset() << height,
+                offset: block.offset() << height,
                 size: 1 << height,
             }
         })
     }
 
     pub fn free(&mut self, offset: usize) {
-        let node = self.preorder(|node| {
-            eprintln!("preorder visiting {node:?} -> {:?}", self.state(node));
-
-            match self.state(node) {
-                NodeState::Free => Action::Skip,
-                NodeState::Subdivided | NodeState::Full => Action::Descend,
-                NodeState::Allocated => {
-                    let height = dbg!(self.depth - node.depth());
-                    if dbg!(node.offset() << height) == dbg!(offset) {
-                        Action::Yield(node)
-                    } else {
-                        Action::Descend
-                    }
-                }
+        // find the block corresponding to this allocation - the offset does not uniquely identify a
+        // block, but does uniquely identify an allocation
+        let block = self.preorder(|block| {
+            let height = self.depth - block.depth();
+            let at_correct_offset = block.offset() << height == offset;
+            match (self.state(block), at_correct_offset) {
+                // if we've found an allocated block with the correct offset, it's the block
+                // corresponding to the allocation
+                (BlockState::Allocated, true) => Action::Yield(block),
+                // ...but, if the block is allocated and has the wrong offset, there's no point
+                // searching its subblocks as they can't possibly contain our allocation.
+                (BlockState::Allocated, false) => Action::Skip,
+                // a free block has no allocated sub-blocks, so it can't possibly contain our
+                // allocation
+                (BlockState::Free, _) => Action::Skip,
+                // ...but if the block has allocated sub-blocks, we need to search them for our
+                // allocation.
+                (BlockState::Subdivided | BlockState::Full, _) => Action::Descend,
             }
         });
 
-        dbg!(node);
-
-        // if we couldn't find the node, we've either been passed garbage or we're experiencing a
+        // if we couldn't find the block, we've either been passed garbage or we're experiencing a
         // double free
-        let node = node.expect("allocation being freed should be allocated (double free?)");
+        let block = block.expect("allocation could not be found (double free?)");
 
-        // mark the node as available
-        self.set_state(node, NodeState::Free);
+        // mark the block as free
+        self.set_state(block, BlockState::Free);
 
-        // we know the node corresponding to our allocation has just gone from Allocated to Free. we
-        // need to do two things:
-        // - mark every node in our node's path to the root as, at minimum, Subdivided
-        //   - a node with no allocated children becomes available
-        //   - a node with one allocated child becomes unavailable
-        let mut buddies = self.buddies(node);
+        // we know the state of our allocated block has changed from allocated to free.
+        //
+        // we now need to mark every superblock of our block as either free or subdivided.
+        // - a block with two free children becomes free (the block could now be allocated)
+        // - otherwise, the block has at least one allocated sub-block, and thus becomes subdivided
+        //
+        // since we just freed a sub-block, it's not possible for any of the superblocks to become
+        // full.
+        let mut buddies = self.buddies(block);
 
-        // mark parents as Free until we reach a node where our buddy isn't available
-        for (buddy, parent) in &mut buddies {
-            if self.state(buddy) != NodeState::Free {
+        // mark as many superblocks as free as possible
+        for (buddy, superblock) in &mut buddies {
+            let superblock_is_free = self.state(buddy) == BlockState::Free;
+
+            if !superblock_is_free {
                 // since the item has been consumed from the iterator, we need to mark the
-                // parent as unavailable here otherwise it will be missed by the loop below
-                self.set_state(parent, NodeState::Subdivided);
+                // superblock as subdivided here otherwise it will be missed by the loop below
+                self.set_state(superblock, BlockState::Subdivided);
                 break;
             }
 
-            self.set_state(parent, NodeState::Free);
+            self.set_state(superblock, BlockState::Free);
         }
 
-        // mark remaining parents as unavailable
-        for (_, parent) in &mut buddies {
-            self.set_state(parent, NodeState::Subdivided);
+        // mark remaining superblocks as subdivided
+        for (_, superblock) in &mut buddies {
+            self.set_state(superblock, BlockState::Subdivided);
         }
     }
 
-    fn preorder<T>(&self, mut visitor: impl FnMut(NodeIndex) -> Action<T>) -> Option<T> {
+    fn preorder<T>(&self, mut visitor: impl FnMut(BlockIndex) -> Action<T>) -> Option<T> {
         fn preorder<T>(
             tree: &Tree,
-            node: NodeIndex,
-            visitor: &mut impl FnMut(NodeIndex) -> Action<T>,
+            block: BlockIndex,
+            visitor: &mut impl FnMut(BlockIndex) -> Action<T>,
         ) -> Option<T> {
-            if !tree.has_node(node) {
+            if !tree.has_block(block) {
                 return None;
             }
 
-            let action = visitor(node);
+            let action = visitor(block);
             match action {
                 Action::Yield(value) => Some(value),
                 Action::Skip => None,
                 Action::Descend => {
-                    let (left, right) = node.children();
+                    let (left, right) = block.subblocks();
 
                     preorder(tree, left, visitor).or_else(|| preorder(tree, right, visitor))
                 }
             }
         }
 
-        preorder(self, NodeIndex::root(), &mut visitor)
+        preorder(self, BlockIndex::root(), &mut visitor)
     }
 
-    fn state(&self, node: NodeIndex) -> NodeState {
-        assert!(self.has_node(node));
+    fn state(&self, node: BlockIndex) -> BlockState {
+        assert!(self.has_block(node));
 
-        let bit0 = self.storage[2 * node.0];
-        let bit1 = self.storage[2 * node.0 + 1];
+        let index = 2 * node.0;
+        let state = self.storage[index..index + 2].load::<u8>();
 
-        match (bit0, bit1) {
-            (false, false) => NodeState::Free,
-            (false, true) => NodeState::Subdivided,
-            (true, false) => NodeState::Full,
-            (true, true) => NodeState::Allocated,
+        match state {
+            0 => BlockState::Free,
+            1 => BlockState::Subdivided,
+            2 => BlockState::Full,
+            3 => BlockState::Allocated,
+            _ => unreachable!(),
         }
     }
 
-    fn set_state(&mut self, node: NodeIndex, state: NodeState) {
-        assert!(self.has_node(node));
+    fn set_state(&mut self, node: BlockIndex, state: BlockState) {
+        assert!(self.has_block(node));
 
-        let (bit0, bit1) = match state {
-            NodeState::Free => (false, false),
-            NodeState::Subdivided => (false, true),
-            NodeState::Full => (true, false),
-            NodeState::Allocated => (true, true),
+        let state = match state {
+            BlockState::Free => 0,
+            BlockState::Subdivided => 1,
+            BlockState::Full => 2,
+            BlockState::Allocated => 3,
         };
 
-        self.storage.set(2 * node.0, bit0);
-        self.storage.set(2 * node.0 + 1, bit1);
+        let index = 2 * node.0;
+        self.storage[index..index + 2].store::<u8>(state);
     }
 
-    fn nodes(&self) -> impl Iterator<Item = NodeIndex> + '_ {
-        (0..self.node_count()).map(NodeIndex)
+    fn blocks(&self) -> impl Iterator<Item = BlockIndex> + '_ {
+        (0..self.block_count()).map(BlockIndex)
     }
 
-    fn buddies(&self, node: NodeIndex) -> impl Iterator<Item = (NodeIndex, NodeIndex)> {
-        let mut node = node;
+    fn buddies(&self, block: BlockIndex) -> impl Iterator<Item = (BlockIndex, BlockIndex)> {
+        let mut block = block;
 
         iter::from_fn(move || {
-            let parent = node.parent();
-            let buddy = node.buddy();
+            let superblock = block.superblock();
+            let buddy = block.buddy();
 
-            if let Some(parent) = parent {
-                node = parent;
+            if let Some(superblock) = superblock {
+                block = superblock;
             }
 
-            buddy.zip(parent)
+            buddy.zip(superblock)
         })
     }
 
-    fn has_node(&self, node: NodeIndex) -> bool {
-        node.0 < self.node_count()
+    fn has_block(&self, block: BlockIndex) -> bool {
+        block.0 < self.block_count()
     }
 
-    fn node_count(&self) -> usize {
+    fn block_count(&self) -> usize {
         (1 << (self.depth + 1)) - 1
     }
 
@@ -244,36 +265,32 @@ impl<'s> Tree<'s> {
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub enum NodeState {
-    /// Has no allocated children.
+pub enum BlockState {
+    /// Block has no allocated sub-blocks.
     Free,
-    /// Has one or more allocated children and one or more reachable, unallocated children.
+    /// Block has been subdivided and has one or more allocated sub-blocks and one or more
+    /// reachable and free sub-blocks.
     Subdivided,
-    /// Has no reachable, unallocated children.
+    /// Block has been subdivided and has no reachable and free sub-blocks.
     Full,
-    /// Has been allocated.
+    /// Block has been allocated.
     Allocated,
-}
-
-impl NodeState {
-    fn has_reachable_unallocated_children(self) -> bool {
-        match self {
-            Self::Free | Self::Subdivided => true,
-            Self::Full | Self::Allocated => false,
-        }
-    }
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 #[repr(transparent)]
-pub struct NodeIndex(usize);
+pub struct BlockIndex(usize);
 
-impl NodeIndex {
+impl BlockIndex {
     fn root() -> Self {
         Self(0)
     }
 
-    pub fn parent(self) -> Option<Self> {
+    pub fn is_root(self) -> bool {
+        self.0 == 0
+    }
+
+    pub fn superblock(self) -> Option<Self> {
         (!self.is_root()).then(|| Self((self.0 - 1) / 2))
     }
 
@@ -281,23 +298,11 @@ impl NodeIndex {
         (!self.is_root()).then(|| Self(((self.0 - 1) ^ 1) + 1))
     }
 
-    pub fn children(self) -> (Self, Self) {
+    pub fn subblocks(self) -> (Self, Self) {
         let left = Self(2 * self.0 + 1);
         let right = Self(2 * self.0 + 2);
 
         (left, right)
-    }
-
-    pub fn left_child(self) -> Self {
-        let (left, _) = self.children();
-
-        left
-    }
-
-    pub fn right_child(self) -> Self {
-        let (_, right) = self.children();
-
-        right
     }
 
     pub fn depth(self) -> usize {
@@ -306,10 +311,6 @@ impl NodeIndex {
 
     pub fn offset(self) -> usize {
         self.0 + 1 - (1 << self.depth())
-    }
-
-    pub fn is_root(self) -> bool {
-        self.0 == 0
     }
 }
 
@@ -322,15 +323,15 @@ impl fmt::Display for Dot<'_, '_> {
 
         writeln!(f, "digraph {{")?;
         writeln!(f, "  node [style=filled, fixedsize=true];")?;
-        for node_index in tree.nodes() {
+        for node_index in tree.blocks() {
             const GREEN: &str = "#9dd5c0";
             const BLUE: &str = "#27a4dd";
             const RED: &str = "#f1646c";
             let (fillcolor, shape) = match tree.state(node_index) {
-                NodeState::Free => (GREEN, "circle"),
-                NodeState::Subdivided => (BLUE, "Mcircle"),
-                NodeState::Full => (RED, "Msquare"),
-                NodeState::Allocated => (RED, "square"),
+                BlockState::Free => (GREEN, "circle"),
+                BlockState::Subdivided => (BLUE, "Mcircle"),
+                BlockState::Full => (RED, "Msquare"),
+                BlockState::Allocated => (RED, "square"),
             };
 
             writeln!(
@@ -339,9 +340,9 @@ impl fmt::Display for Dot<'_, '_> {
                 node_index.0, fillcolor, shape
             )?;
 
-            let (left, right) = node_index.children();
+            let (left, right) = node_index.subblocks();
             for child in [left, right] {
-                if tree.has_node(child) {
+                if tree.has_block(child) {
                     writeln!(f, "  n{} -> n{};", node_index.0, child.0)?;
                 }
             }
@@ -407,9 +408,9 @@ mod tests {
     #[test]
     fn preorder_descend() {
         let mut storage = [0; 4];
-        let mut tree = Tree::new(&mut storage, 3);
+        let tree = Tree::new(&mut storage, 3);
 
-        let mut preorder = Vec::with_capacity(tree.node_count());
+        let mut preorder = Vec::with_capacity(tree.block_count());
         let result = tree.preorder(|node| -> Action<()> {
             preorder.push(node);
 
@@ -420,7 +421,7 @@ mod tests {
             preorder,
             [0, 1, 3, 7, 8, 4, 9, 10, 2, 5, 11, 12, 6, 13, 14]
                 .into_iter()
-                .map(NodeIndex)
+                .map(BlockIndex)
                 .collect::<Vec<_>>()
         );
         assert_eq!(result, None);
@@ -429,9 +430,9 @@ mod tests {
     #[test]
     fn preorder_skip() {
         let mut storage = [0; 4];
-        let mut tree = Tree::new(&mut storage, 3);
+        let tree = Tree::new(&mut storage, 3);
 
-        let mut preorder = Vec::with_capacity(tree.node_count());
+        let mut preorder = Vec::with_capacity(tree.block_count());
         let result = tree.preorder(|node| -> Action<()> {
             preorder.push(node);
 
@@ -446,7 +447,7 @@ mod tests {
             preorder,
             [0, 1, 3, 7, 8, 4, 2]
                 .into_iter()
-                .map(NodeIndex)
+                .map(BlockIndex)
                 .collect::<Vec<_>>()
         );
         assert_eq!(result, None);
@@ -455,9 +456,9 @@ mod tests {
     #[test]
     fn preorder_yield() {
         let mut storage = [0; 4];
-        let mut tree = Tree::new(&mut storage, 3);
+        let tree = Tree::new(&mut storage, 3);
 
-        let mut preorder = Vec::with_capacity(tree.node_count());
+        let mut preorder = Vec::with_capacity(tree.block_count());
         let result = tree.preorder(|node| {
             preorder.push(node);
 
@@ -472,119 +473,105 @@ mod tests {
             preorder,
             [0, 1, 3, 7, 8, 4, 9, 10, 2, 5]
                 .into_iter()
-                .map(NodeIndex)
+                .map(BlockIndex)
                 .collect::<Vec<_>>()
         );
-        assert_eq!(result, Some(NodeIndex(5)));
+        assert_eq!(result, Some(BlockIndex(5)));
     }
 
     #[test]
     fn node_index() {
         // depth 0, height 3
-        let node = NodeIndex(0);
-        assert_eq!(node.parent(), None);
+        let node = BlockIndex(0);
+        assert_eq!(node.superblock(), None);
         assert_eq!(node.buddy(), None);
-        assert_eq!(node.left_child(), NodeIndex(1));
-        assert_eq!(node.right_child(), NodeIndex(2));
         assert_eq!(node.depth(), 0);
         assert_eq!(node.offset(), 0);
 
         // depth 1, height 2
-        let node = NodeIndex(1);
-        assert_eq!(node.parent(), Some(NodeIndex(0)));
-        assert_eq!(node.buddy(), Some(NodeIndex(2)));
-        assert_eq!(node.left_child(), NodeIndex(3));
-        assert_eq!(node.right_child(), NodeIndex(4));
+        let node = BlockIndex(1);
+        assert_eq!(node.superblock(), Some(BlockIndex(0)));
+        assert_eq!(node.buddy(), Some(BlockIndex(2)));
         assert_eq!(node.depth(), 1);
         assert_eq!(node.offset(), 0);
 
-        let node = NodeIndex(2);
-        assert_eq!(node.parent(), Some(NodeIndex(0)));
-        assert_eq!(node.buddy(), Some(NodeIndex(1)));
-        assert_eq!(node.left_child(), NodeIndex(5));
-        assert_eq!(node.right_child(), NodeIndex(6));
+        let node = BlockIndex(2);
+        assert_eq!(node.superblock(), Some(BlockIndex(0)));
+        assert_eq!(node.buddy(), Some(BlockIndex(1)));
         assert_eq!(node.depth(), 1);
         assert_eq!(node.offset(), 1);
 
         // depth 2, height 1
-        let node = NodeIndex(3);
-        assert_eq!(node.parent(), Some(NodeIndex(1)));
-        assert_eq!(node.buddy(), Some(NodeIndex(4)));
-        assert_eq!(node.left_child(), NodeIndex(7));
-        assert_eq!(node.right_child(), NodeIndex(8));
+        let node = BlockIndex(3);
+        assert_eq!(node.superblock(), Some(BlockIndex(1)));
+        assert_eq!(node.buddy(), Some(BlockIndex(4)));
         assert_eq!(node.depth(), 2);
         assert_eq!(node.offset(), 0);
 
-        let node = NodeIndex(4);
-        assert_eq!(node.parent(), Some(NodeIndex(1)));
-        assert_eq!(node.buddy(), Some(NodeIndex(3)));
-        assert_eq!(node.left_child(), NodeIndex(9));
-        assert_eq!(node.right_child(), NodeIndex(10));
+        let node = BlockIndex(4);
+        assert_eq!(node.superblock(), Some(BlockIndex(1)));
+        assert_eq!(node.buddy(), Some(BlockIndex(3)));
         assert_eq!(node.depth(), 2);
         assert_eq!(node.offset(), 1);
 
-        let node = NodeIndex(5);
-        assert_eq!(node.parent(), Some(NodeIndex(2)));
-        assert_eq!(node.buddy(), Some(NodeIndex(6)));
-        assert_eq!(node.left_child(), NodeIndex(11));
-        assert_eq!(node.right_child(), NodeIndex(12));
+        let node = BlockIndex(5);
+        assert_eq!(node.superblock(), Some(BlockIndex(2)));
+        assert_eq!(node.buddy(), Some(BlockIndex(6)));
         assert_eq!(node.depth(), 2);
         assert_eq!(node.offset(), 2);
 
-        let node = NodeIndex(6);
-        assert_eq!(node.parent(), Some(NodeIndex(2)));
-        assert_eq!(node.buddy(), Some(NodeIndex(5)));
-        assert_eq!(node.left_child(), NodeIndex(13));
-        assert_eq!(node.right_child(), NodeIndex(14));
+        let node = BlockIndex(6);
+        assert_eq!(node.superblock(), Some(BlockIndex(2)));
+        assert_eq!(node.buddy(), Some(BlockIndex(5)));
         assert_eq!(node.depth(), 2);
         assert_eq!(node.offset(), 3);
 
         // depth 3, height 0
-        let node = NodeIndex(7);
-        assert_eq!(node.parent(), Some(NodeIndex(3)));
-        assert_eq!(node.buddy(), Some(NodeIndex(8)));
+        let node = BlockIndex(7);
+        assert_eq!(node.superblock(), Some(BlockIndex(3)));
+        assert_eq!(node.buddy(), Some(BlockIndex(8)));
         assert_eq!(node.depth(), 3);
         assert_eq!(node.offset(), 0);
 
-        let node = NodeIndex(8);
-        assert_eq!(node.parent(), Some(NodeIndex(3)));
-        assert_eq!(node.buddy(), Some(NodeIndex(7)));
+        let node = BlockIndex(8);
+        assert_eq!(node.superblock(), Some(BlockIndex(3)));
+        assert_eq!(node.buddy(), Some(BlockIndex(7)));
         assert_eq!(node.depth(), 3);
         assert_eq!(node.offset(), 1);
 
-        let node = NodeIndex(9);
-        assert_eq!(node.parent(), Some(NodeIndex(4)));
-        assert_eq!(node.buddy(), Some(NodeIndex(10)));
+        let node = BlockIndex(9);
+        assert_eq!(node.superblock(), Some(BlockIndex(4)));
+        assert_eq!(node.buddy(), Some(BlockIndex(10)));
         assert_eq!(node.depth(), 3);
         assert_eq!(node.offset(), 2);
 
-        let node = NodeIndex(10);
-        assert_eq!(node.parent(), Some(NodeIndex(4)));
-        assert_eq!(node.buddy(), Some(NodeIndex(9)));
+        let node = BlockIndex(10);
+        assert_eq!(node.superblock(), Some(BlockIndex(4)));
+        assert_eq!(node.buddy(), Some(BlockIndex(9)));
         assert_eq!(node.depth(), 3);
         assert_eq!(node.offset(), 3);
 
-        let node = NodeIndex(11);
-        assert_eq!(node.parent(), Some(NodeIndex(5)));
-        assert_eq!(node.buddy(), Some(NodeIndex(12)));
+        let node = BlockIndex(11);
+        assert_eq!(node.superblock(), Some(BlockIndex(5)));
+        assert_eq!(node.buddy(), Some(BlockIndex(12)));
         assert_eq!(node.depth(), 3);
         assert_eq!(node.offset(), 4);
 
-        let node = NodeIndex(12);
-        assert_eq!(node.parent(), Some(NodeIndex(5)));
-        assert_eq!(node.buddy(), Some(NodeIndex(11)));
+        let node = BlockIndex(12);
+        assert_eq!(node.superblock(), Some(BlockIndex(5)));
+        assert_eq!(node.buddy(), Some(BlockIndex(11)));
         assert_eq!(node.depth(), 3);
         assert_eq!(node.offset(), 5);
 
-        let node = NodeIndex(13);
-        assert_eq!(node.parent(), Some(NodeIndex(6)));
-        assert_eq!(node.buddy(), Some(NodeIndex(14)));
+        let node = BlockIndex(13);
+        assert_eq!(node.superblock(), Some(BlockIndex(6)));
+        assert_eq!(node.buddy(), Some(BlockIndex(14)));
         assert_eq!(node.depth(), 3);
         assert_eq!(node.offset(), 6);
 
-        let node = NodeIndex(14);
-        assert_eq!(node.parent(), Some(NodeIndex(6)));
-        assert_eq!(node.buddy(), Some(NodeIndex(13)));
+        let node = BlockIndex(14);
+        assert_eq!(node.superblock(), Some(BlockIndex(6)));
+        assert_eq!(node.buddy(), Some(BlockIndex(13)));
         assert_eq!(node.depth(), 3);
         assert_eq!(node.offset(), 7);
     }
