@@ -313,6 +313,9 @@ pub extern "C" fn kernel_main() {
     let allocator_blocks = allocator_len / PAGE_SIZE;
     unsafe {
         dbg!(ALLOCATOR.get_or_init(|| Allocator::new(allocator_blocks)));
+        ALLOCATOR.get_mut().unwrap().allocate(13).unwrap();
+        ALLOCATOR.get_mut().unwrap().allocate(13).unwrap();
+        ALLOCATOR.get_mut().unwrap().allocate(13).unwrap();
     }
 
     // Permanently transfer control to the scheduler.
