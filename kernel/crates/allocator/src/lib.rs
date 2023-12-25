@@ -134,6 +134,37 @@ mod tests {
         Ok(())
     }
 
+    #[test]
+    fn heap_overflow() -> Result<(), Error> {
+        let layout = Layout::from_size_align(0x100000, 0x100000)?;
+        let base = unsafe { std::alloc::alloc(layout) };
+        let start = unsafe { base.add(0x1100) };
+        let end = unsafe { base.add(0x5000) };
+
+        // The tree has depth 2, so it can manage the allocation of up to 4 blocks,
+        // but there are only 3 pages of usable heap space (0x2000..0x5000).
+        let mut allocator = Allocator::new(start as *const _, end as *const _);
+        eprintln!("{}", allocator.tree.dot());
+        assert_eq!(allocator.tree_len, 2);
+        assert_eq!(allocator.heap_len_pages, 3);
+
+        // Allocate 2 blocks (offset 0, size 2).
+        let a1 = allocator.allocate(2)?;
+        assert_eq!(unsafe { (a1.ptr as *const u8).offset_from(base) }, 0x2000);
+        assert_eq!(a1.size, 0x2000);
+
+        // The tree thinks it can allocate another 2 blocks (offset 2, size 2),
+        // but it would overflow our heap, so we still return OutOfMemoryError.
+        assert_eq!(allocator.allocate(2), Err(OutOfMemoryError));
+
+        // Allocate 1 block (offset 2, size 1).
+        let a2 = allocator.allocate(1)?;
+        assert_eq!(unsafe { (a2.ptr as *const u8).offset_from(base) }, 0x4000);
+        assert_eq!(a2.size, 0x1000);
+
+        Ok(())
+    }
+
     #[derive(Debug)]
     enum Error {
         LayoutError,
