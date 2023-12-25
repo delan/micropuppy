@@ -71,6 +71,7 @@ dependencies = [
 name = "kernel"
 version = "0.1.0"
 dependencies = [
+ "buddy-alloc",
  "byteorder",
  "fdt",
  "generic_once_cell",

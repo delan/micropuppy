@@ -1,6 +1,7 @@
 #![no_std]
 #![no_main]
 #![feature(panic_info_message)]
+#![feature(maybe_uninit_slice)]
 #![deny(clippy::undocumented_unsafe_blocks)]
 
 #[allow(unused_macros)]
@@ -27,6 +28,7 @@ macro_rules! write_special_reg {
 }
 
 mod a53;
+mod alloc;
 mod gicv2;
 mod logging;
 mod reg;
@@ -39,12 +41,15 @@ use core::fmt::Write;
 use core::panic::PanicInfo;
 use core::ptr::null;
 
+use alloc::Allocator;
 use scheduler::Scheduler;
 use task::Context;
 
 use crate::gicv2::InterruptId;
 use crate::logging::Pl011Writer;
 use crate::sync::OnceCell;
+
+const PAGE_SIZE: usize = 4096;
 
 global_asm!(include_str!("entry.s"), options(raw));
 
@@ -57,6 +62,7 @@ static mut TIMER_INTERRUPT: InterruptId = InterruptId::spurious();
 static mut GICD: gicv2::Distributor = gicv2::Distributor::new(null());
 static mut GICC: gicv2::CpuInterface = gicv2::CpuInterface::new(null());
 static mut SCHEDULER: OnceCell<Scheduler> = OnceCell::new();
+static mut ALLOCATOR: OnceCell<Allocator> = OnceCell::new();
 
 #[no_mangle]
 unsafe extern "C" fn vector_el1_sp0_synchronous() {
@@ -294,6 +300,19 @@ pub extern "C" fn kernel_main() {
         asm!("msr VBAR_EL1, {}", in(reg) &VECTORS);
 
         SCHEDULER.get_or_init(|| Scheduler::new());
+    }
+
+    extern "C" {
+        static BUDDY_ALLOC_TREE: ();
+    }
+    let ram = fdt.memory().regions().next().unwrap();
+    let ram_start = ram.starting_address as isize;
+    let buddy_alloc_tree = unsafe { &BUDDY_ALLOC_TREE } as *const _ as isize;
+    let reserved_len = buddy_alloc_tree - ram_start;
+    let allocator_len = ram.size.unwrap() - reserved_len as usize;
+    let allocator_blocks = allocator_len / PAGE_SIZE;
+    unsafe {
+        dbg!(ALLOCATOR.get_or_init(|| Allocator::new(allocator_blocks)));
     }
 
     // Permanently transfer control to the scheduler.

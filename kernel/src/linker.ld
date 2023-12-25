@@ -44,6 +44,7 @@ SECTIONS
         . = . + 0x4000;
         TASK2_KERNEL_INITIAL_SP = .;
     }
+    BUDDY_ALLOC_TREE = .;
 
     /* Debugging: DWARF */
     .debug_abbrev : { *(.debug_abbrev) }
