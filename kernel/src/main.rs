@@ -27,7 +27,6 @@ macro_rules! write_special_reg {
 }
 
 mod a53;
-mod alloc;
 mod gicv2;
 mod logging;
 mod reg;
@@ -40,15 +39,13 @@ use core::fmt::Write;
 use core::panic::PanicInfo;
 use core::ptr::null;
 
-use alloc::Allocator;
+use allocator::Allocator;
 use scheduler::Scheduler;
 use task::Context;
 
 use crate::gicv2::InterruptId;
 use crate::logging::Pl011Writer;
 use crate::sync::OnceCell;
-
-const PAGE_SIZE: usize = 4096;
 
 global_asm!(include_str!("entry.s"), options(raw));
 
@@ -309,9 +306,6 @@ pub extern "C" fn kernel_main() {
     let allocator_end = unsafe { ram.starting_address.add(ram.size.unwrap()) };
     unsafe {
         dbg!(ALLOCATOR.get_or_init(|| Allocator::new(allocator_start, allocator_end)));
-        dbg!(ALLOCATOR.get_mut().unwrap().allocate(13).unwrap());
-        dbg!(ALLOCATOR.get_mut().unwrap().allocate(13).unwrap());
-        dbg!(ALLOCATOR.get_mut().unwrap().allocate(13).unwrap());
     }
 
     // Permanently transfer control to the scheduler.
