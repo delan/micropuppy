@@ -29,7 +29,6 @@ macro_rules! write_special_reg {
 mod a53;
 mod gicv2;
 mod logging;
-mod num;
 mod reg;
 mod scheduler;
 mod sync;

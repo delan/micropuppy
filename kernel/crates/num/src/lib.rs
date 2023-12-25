@@ -1,3 +1,5 @@
+#![cfg_attr(not(test), no_std)]
+
 use core::mem::size_of;
 
 /// Converts a value to `usize`, or raises a compile error if the **type** is wider than a `usize`.

@@ -1,6 +1,7 @@
+use num::AsUsize;
+
 use crate::gicv2::InterruptId;
 use crate::memory_mapped_register as reg;
-use crate::num::AsUsize;
 use crate::reg::memory_mapped::{PaddingBytes, Register};
 use crate::reg::prelude::*;
 

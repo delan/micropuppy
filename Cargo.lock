@@ -36,6 +36,7 @@ name = "buddy-alloc"
 version = "0.1.0"
 dependencies = [
  "bitvec",
+ "num",
  "opener",
 ]
 
@@ -75,6 +76,7 @@ dependencies = [
  "generic_once_cell",
  "lock_api",
  "log",
+ "num",
  "vcell",
 ]
 
@@ -108,6 +110,10 @@ checksum = "ec60c60a693226186f5d6edf073232bfb6464ed97eb22cf3b01c1e8198fd97f5"
 dependencies = [
  "windows-sys",
 ]
+
+[[package]]
+name = "num"
+version = "0.1.0"
 
 [[package]]
 name = "opener"

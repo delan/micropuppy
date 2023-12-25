@@ -1,6 +1,7 @@
 use core::{fmt, iter, mem};
 
 use bitvec::prelude::*;
+use num::AsUsize;
 
 #[derive(Debug)]
 pub struct Tree<'s> {
@@ -33,6 +34,14 @@ impl<'s> Tree<'s> {
             0 => 0,
             1 => 1,
             other => 1 << (other.next_power_of_two().ilog2() - 1),
+        }
+    }
+
+    pub fn depth_required(block_count: usize) -> usize {
+        match block_count {
+            0 => 0,
+            1 => 0,
+            other => other.next_power_of_two().ilog2().as_usize(),
         }
     }
 
@@ -384,6 +393,20 @@ mod tests {
         assert_eq!(Tree::storage_required(7), 4); // 2x8(!) bits leaf + 2x7  bits
         assert_eq!(Tree::storage_required(8), 4); // 2x8    bits leaf + 2x7  bits
         assert_eq!(Tree::storage_required(9), 8); // 2x16   bits leaf + 2x15 bits
+    }
+
+    #[test]
+    fn depth_required() {
+        assert_eq!(Tree::depth_required(0), 0);
+        assert_eq!(Tree::depth_required(1), 0); // 1    leaf
+        assert_eq!(Tree::depth_required(2), 1); // 2    leaves
+        assert_eq!(Tree::depth_required(3), 2); // 4(!) leaves
+        assert_eq!(Tree::depth_required(4), 2); // 4    leaves
+        assert_eq!(Tree::depth_required(5), 3); // 8(!) leaves
+        assert_eq!(Tree::depth_required(6), 3); // 8(!) leaves
+        assert_eq!(Tree::depth_required(7), 3); // 8(!) leaves
+        assert_eq!(Tree::depth_required(8), 3); // 8    leaves
+        assert_eq!(Tree::depth_required(9), 4); // 16   leaves
     }
 
     // offsets:

@@ -1,7 +1,7 @@
 use byteorder::{BigEndian, ByteOrder};
+use num::AsUsize;
 
 use crate::a53::gicv2::{CpuInterfaceRegisterBlock, DistributorRegisterBlock};
-use crate::num::AsUsize;
 
 macro_rules! bounds_checked {
     ($(#[$meta:meta])* $vis:vis struct $name:ident ($int:ident ($low:literal ..= $high:literal))) => {
