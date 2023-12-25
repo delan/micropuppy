@@ -28,6 +28,14 @@ pub enum Action<T> {
 }
 
 impl<'s> Tree<'s> {
+    pub fn storage_required(block_count: usize) -> usize {
+        match block_count {
+            0 => 0,
+            1 => 1,
+            other => 1 << (other.next_power_of_two().ilog2() - 1),
+        }
+    }
+
     pub fn new(storage: &'s mut [u8], depth: usize) -> Self {
         // a tree with depth 0 has a single block, and its state would just be a boolean
         assert!(depth >= 1, "tree must have depth of at least 1");
@@ -363,6 +371,20 @@ impl fmt::Display for Dot<'_, '_> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn storage_required() {
+        assert_eq!(Tree::storage_required(0), 0);
+        assert_eq!(Tree::storage_required(1), 1); // 2x1    bits leaf
+        assert_eq!(Tree::storage_required(2), 1); // 2x2    bits leaf + 2x1  bits
+        assert_eq!(Tree::storage_required(3), 2); // 2x4(!) bits leaf + 2x3  bits
+        assert_eq!(Tree::storage_required(4), 2); // 2x4    bits leaf + 2x3  bits
+        assert_eq!(Tree::storage_required(5), 4); // 2x8(!) bits leaf + 2x7  bits
+        assert_eq!(Tree::storage_required(6), 4); // 2x8(!) bits leaf + 2x7  bits
+        assert_eq!(Tree::storage_required(7), 4); // 2x8(!) bits leaf + 2x7  bits
+        assert_eq!(Tree::storage_required(8), 4); // 2x8    bits leaf + 2x7  bits
+        assert_eq!(Tree::storage_required(9), 8); // 2x16   bits leaf + 2x15 bits
+    }
 
     // offsets:
     //        0         depth = 0, height = 3
