@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["kernel"]
+members = ["kernel", "kernel/crates/*"]
 exclude = ["runner"]
 
 [profile.dev]
