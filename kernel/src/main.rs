@@ -303,19 +303,16 @@ pub extern "C" fn kernel_main() {
     }
 
     extern "C" {
-        static BUDDY_ALLOC_TREE: ();
+        static BUDDY_ALLOC_TREE: u8;
     }
     let ram = fdt.memory().regions().next().unwrap();
-    let ram_start = ram.starting_address as isize;
-    let buddy_alloc_tree = unsafe { &BUDDY_ALLOC_TREE } as *const _ as isize;
-    let reserved_len = buddy_alloc_tree - ram_start;
-    let allocator_len = ram.size.unwrap() - reserved_len as usize;
-    let allocator_blocks = allocator_len / PAGE_SIZE;
+    let allocator_start = unsafe { &BUDDY_ALLOC_TREE } as *const u8;
+    let allocator_end = unsafe { ram.starting_address.add(ram.size.unwrap()) };
     unsafe {
-        dbg!(ALLOCATOR.get_or_init(|| Allocator::new(allocator_blocks)));
-        ALLOCATOR.get_mut().unwrap().allocate(13).unwrap();
-        ALLOCATOR.get_mut().unwrap().allocate(13).unwrap();
-        ALLOCATOR.get_mut().unwrap().allocate(13).unwrap();
+        dbg!(ALLOCATOR.get_or_init(|| Allocator::new(allocator_start, allocator_end)));
+        dbg!(ALLOCATOR.get_mut().unwrap().allocate(13).unwrap());
+        dbg!(ALLOCATOR.get_mut().unwrap().allocate(13).unwrap());
+        dbg!(ALLOCATOR.get_mut().unwrap().allocate(13).unwrap());
     }
 
     // Permanently transfer control to the scheduler.
