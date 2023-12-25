@@ -1,4 +1,3 @@
-use core::mem::MaybeUninit;
 use core::{fmt, slice};
 
 use buddy_alloc::tree::{OutOfMemoryError, Tree};
@@ -21,7 +20,7 @@ pub struct Allocation {
 impl Allocator {
     pub fn new(start: *const u8, end: *const u8) -> Self {
         extern "C" {
-            static BUDDY_ALLOC_TREE: MaybeUninit<u8>;
+            static BUDDY_ALLOC_TREE: u8;
         }
 
         // Treat end as a page pointer.
@@ -38,13 +37,9 @@ impl Allocator {
         let tree_len = Tree::storage_required(tree_block_count);
         let tree_depth = Tree::depth_required(tree_block_count);
 
-        let base = unsafe { &BUDDY_ALLOC_TREE } as *const _ as *mut _;
+        let base = unsafe { &BUDDY_ALLOC_TREE } as *const u8 as *mut u8;
 
-        let storage = unsafe { slice::from_raw_parts_mut::<MaybeUninit<u8>>(base, tree_len) };
-        for byte in storage.iter_mut() {
-            byte.write(0);
-        }
-        let storage = unsafe { MaybeUninit::slice_assume_init_mut(storage) };
+        let storage = unsafe { slice::from_raw_parts_mut(base, tree_len) };
 
         let tree_end = unsafe { base.add(tree_len) };
         let padding = tree_end.align_offset(PAGE_SIZE);

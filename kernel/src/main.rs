@@ -1,7 +1,6 @@
 #![no_std]
 #![no_main]
 #![feature(panic_info_message)]
-#![feature(maybe_uninit_slice)]
 #![deny(clippy::undocumented_unsafe_blocks)]
 
 #[allow(unused_macros)]
