@@ -26,6 +26,8 @@ struct RunnerArgs {
 enum RunnerCommand {
     /// Build the kernel binary.
     Build,
+    /// Run tests for platform-independent packages.
+    Test,
     /// Remove build artifacts.
     Clean,
     /// Build the kernel binary, then run the kernel in QEMU.
@@ -152,6 +154,17 @@ fn main() -> Result<()> {
         Ok(())
     };
 
+    let test = || -> Result<()> {
+        runner.step("test");
+        runner.run(
+            command::make("test")
+                .directory("kernel/")
+                .variable("CARGOFLAGS", target.cargo_profile_flag()),
+        )?;
+
+        Ok(())
+    };
+
     let clean = || -> Result<()> {
         runner.step("clean");
         runner.run(command::make("clean").directory("kernel/"))?;
@@ -187,6 +200,7 @@ fn main() -> Result<()> {
 
     match command {
         RunnerCommand::Build => build(),
+        RunnerCommand::Test => test(),
         RunnerCommand::Clean => clean(),
         RunnerCommand::Qemu { debugger } => build().and_then(|_| qemu(debugger)),
         RunnerCommand::Gdb => gdb(),
