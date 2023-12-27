@@ -1,13 +1,13 @@
 .POSIX:
 
 CARGOFLAGS =
-CARGO_TEST_PACKAGES = buddy-alloc
 
 build:
 	cargo build -Zbuild-std --target aarch64-unknown-none.json $(CARGOFLAGS)
 
 test:
-	cargo test $(CARGOFLAGS) -p $(CARGO_TEST_PACKAGES)
+	# Run tests on the host (for platform-independent packages only).
+	cargo test $(CARGOFLAGS)
 
 clean:
 	cargo clean

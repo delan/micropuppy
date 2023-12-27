@@ -155,11 +155,17 @@ fn main() -> Result<()> {
     };
 
     let test = || -> Result<()> {
+        let mut flags = vec![target.cargo_profile_flag()];
+        for package in ["buddy-alloc"] {
+            flags.push("-p");
+            flags.push(package);
+        }
+
         runner.step("test");
         runner.run(
             command::make("test")
                 .directory("kernel/")
-                .variable("CARGOFLAGS", target.cargo_profile_flag()),
+                .variable("CARGOFLAGS", flags.join(" ")),
         )?;
 
         Ok(())
