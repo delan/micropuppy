@@ -1,7 +1,15 @@
 {
-    "rust-analyzer.check.allTargets": false,
-    "rust-analyzer.check.targets": [
-        "aarch64-unknown-none"
+    "editor.formatOnSave": true,
+    "rust-analyzer.cargo.features": "all",
+    "rust-analyzer.cargo.buildScripts.overrideCommand": [
+        "make",
+        "-s",
+        "lsp-check",
     ],
-    "editor.formatOnSave": true
+    // most other rust-analyzer.check.* settings will be ignored
+    "rust-analyzer.check.overrideCommand": [
+        "make",
+        "-s",
+        "lsp-check",
+    ],
 }

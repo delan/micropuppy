@@ -1,7 +1,7 @@
 [workspace]
 resolver = "2"
-members = ["kernel", "kernel/crates/*"]
-exclude = ["runner"]
+members = ["runner", "kernel", "kernel/crates/*"]
+exclude = []
 
 [profile.dev]
 # Unoptimised Rust is so chonky that it will absolutely overflow any reasonably sized stack. Do a
