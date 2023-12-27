@@ -156,7 +156,7 @@ fn main() -> Result<()> {
 
     let test = || -> Result<()> {
         let mut flags = vec![target.cargo_profile_flag()];
-        for package in ["buddy-alloc"] {
+        for package in ["allocator", "buddy-alloc"] {
             flags.push("-p");
             flags.push(package);
         }
