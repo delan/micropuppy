@@ -1,17 +1,78 @@
 .extern INITIAL_SP // defined in linker.ld
 .equ PSCI_SYSTEM_OFF, 0x84000008
 
+// FIXME this doesn’t seem to help get the right addresses
+.equ VM_IA_START, 0xFFFF000000000000
+.equ VM_OA_START, 0x40404000
+.equ VM_MAIN, kernel_main - VM_OA_START + VM_IA_START
+.equ VM_SP, INITIAL_SP - VM_OA_START + VM_IA_START
+
 .section ".text.startup"
+
 .globl _start
 _start:
-    ldr x30, =INITIAL_SP
+    mov x0, #0x9000000
+    mov w1, #'u'
+    mov w2, #'p'
+    strb w1, [x0]               // “u”
+    strb w2, [x0]               // “p”
+    strb w1, [x0]               // “u”
+    strb w2, [x0]               // “p”
+    mov w1, #'!'
+    mov w2, #'\n'
+
+    // 0x40404xxx >>{27,18,9,0}&511 is (0,1,2,4)
+    ldr x5, =TTL0
+    msr TTBR1_EL1, x5
+    strb w1, [x0]               // “!”
+
+    ldr x5, =TTL0
+    add x5, x5, #0x0            // (0)*8
+    ldr x6, =TTL1
+    orr x6, x6, 0b11            // table; valid
+    str x6, [x5]
+    strb w1, [x0]               // “!”
+
+    ldr x5, =TTL1
+    add x5, x5, #0x8            // (1)*8
+    /// ldr x6, =TTL2
+    /// orr x6, x6, 0b11            // table; valid
+    ldr x6, =VM_OA_START
+    orr x6, x6, 0b01            // block; valid
+    str x6, [x5]
+    strb w1, [x0]               // “!”
+
+    /// ldr x5, =TTL2
+    /// add x5, x5, #0x10           // (2)*8
+    /// ldr x6, =TTL3
+    /// orr x6, x6, 0b11            // table; valid
+    /// str x6, [x5]
+    /// strb w1, [x0]
+
+    /// ldr x5, =TTL3
+    /// add x5, x5, #0x20           // (4)*8
+    /// mov x6, #0x40404000
+    /// orr x6, x6, 0b11            // page; valid
+    /// str x6, [x5]
+    /// strb w1, [x0]
+
+    mrs x5, SCTLR_EL1
+    orr x5, x5, #1              // mmu enable
+    msr SCTLR_EL1, x5
+    // FIXME it dies here... predictably
+    strb w1, [x0]               // “!”
+
+    strb w2, [x0]               // “\n”
+
+    ldr x30, =VM_SP
     mov sp, x30
-    bl kernel_main
+    bl VM_MAIN
 
     ldr x0, =PSCI_SYSTEM_OFF
     hvc #0
 
 .section ".text.vectors"
+
 .macro define_vector_trampoline, addr:req, source:req, type:req
     .org \addr
     vector_\source\()_\type\()_trampoline:
@@ -37,6 +98,8 @@ define_vector_trampoline 0x600, el0_a32, synchronous
 define_vector_trampoline 0x680, el0_a32, irq
 define_vector_trampoline 0x700, el0_a32, fiq
 define_vector_trampoline 0x780, el0_a32, serror
+
+.section ".text"
 
 // **These macros MUST be kept in sync with the `Context` struct defined in `task.rs`.**
 .macro task_save
