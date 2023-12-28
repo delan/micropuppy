@@ -26,7 +26,7 @@ jobs:
         # [1]: proposed in https://github.com/rust-lang/rust/issues/16103
         # [2]: merged in https://github.com/rust-lang/rust/pull/54543
         # [3]: request for cargo integration https://github.com/rust-lang/rust/issues/73185
-        run: nix develop --ignore-environment --keep RUSTDOCFLAGS --command cargo doc
+        run: nix develop --ignore-environment --keep RUSTDOCFLAGS --command cargo doc --no-deps
         env:
           RUSTDOCFLAGS: -Zunstable-options --enable-index-page
 
