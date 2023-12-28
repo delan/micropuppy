@@ -32,7 +32,8 @@ impl Allocator {
         // Create a tree for that many pages, even though in reality some of it
         // will be occupied by the tree itself.
         let tree_block_count = unsafe { end.offset_from(start_aligned) } as usize;
-        let tree_len = Tree::storage_required(tree_block_count);
+        // Convert from bits to bytes, rounding up
+        let tree_len = (Tree::storage_bits_required(tree_block_count) + 7) / 8;
         let tree_depth = Tree::depth_required(tree_block_count);
 
         let storage = unsafe { slice::from_raw_parts_mut(start as *mut _, tree_len) };

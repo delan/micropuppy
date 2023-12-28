@@ -29,12 +29,14 @@ pub enum Action<T> {
 }
 
 impl<'s> Tree<'s> {
-    pub fn storage_required(block_count: usize) -> usize {
-        match block_count {
-            0 => 0,
-            1 => 1,
-            other => 1 << (other.next_power_of_two().ilog2() - 1),
-        }
+    /// Returns the number of bits required to store a tree with at least `block_count` blocks.
+    pub fn storage_bits_required(block_count: usize) -> usize {
+        assert!(block_count != 0, "tree must have at least 1 block");
+
+        let leaf_count = block_count.next_power_of_two();
+        let innie_count = leaf_count - 1;
+
+        innie_count * 2 + leaf_count * 2
     }
 
     pub fn depth_required(block_count: usize) -> usize {
@@ -382,31 +384,56 @@ mod tests {
     use super::*;
 
     #[test]
-    fn storage_required() {
-        assert_eq!(Tree::storage_required(0), 0);
-        assert_eq!(Tree::storage_required(1), 1); // 2x1    bits leaf
-        assert_eq!(Tree::storage_required(2), 1); // 2x2    bits leaf + 2x1  bits
-        assert_eq!(Tree::storage_required(3), 2); // 2x4(!) bits leaf + 2x3  bits
-        assert_eq!(Tree::storage_required(4), 2); // 2x4    bits leaf + 2x3  bits
-        assert_eq!(Tree::storage_required(5), 4); // 2x8(!) bits leaf + 2x7  bits
-        assert_eq!(Tree::storage_required(6), 4); // 2x8(!) bits leaf + 2x7  bits
-        assert_eq!(Tree::storage_required(7), 4); // 2x8(!) bits leaf + 2x7  bits
-        assert_eq!(Tree::storage_required(8), 4); // 2x8    bits leaf + 2x7  bits
-        assert_eq!(Tree::storage_required(9), 8); // 2x16   bits leaf + 2x15 bits
-    }
+    fn storage_depth_required() {
+        // size, in bits, of each type of block
+        const NON_LEAF: usize = 2;
+        const LEAF: usize = 2;
 
-    #[test]
-    fn depth_required() {
-        assert_eq!(Tree::depth_required(0), 0);
-        assert_eq!(Tree::depth_required(1), 0); // 1    leaf
-        assert_eq!(Tree::depth_required(2), 1); // 2    leaves
-        assert_eq!(Tree::depth_required(3), 2); // 4(!) leaves
-        assert_eq!(Tree::depth_required(4), 2); // 4    leaves
-        assert_eq!(Tree::depth_required(5), 3); // 8(!) leaves
-        assert_eq!(Tree::depth_required(6), 3); // 8(!) leaves
-        assert_eq!(Tree::depth_required(7), 3); // 8(!) leaves
-        assert_eq!(Tree::depth_required(8), 3); // 8    leaves
-        assert_eq!(Tree::depth_required(9), 4); // 16   leaves
+        // 0 blocks: depth undefined
+        // -> should panic, no test
+
+        // 1 block: depth 0
+        //        1
+        for block_count in [1] {
+            let depth = Tree::depth_required(block_count);
+            let bits = Tree::storage_bits_required(block_count);
+            assert_eq!(depth, 0, "block_count = {block_count}");
+            assert_eq!(bits, 1 * LEAF, "block_count = {block_count}");
+        }
+
+        // 2 blocks: depth 1
+        //        2
+        //    1       1
+        //
+        for block_count in [2] {
+            let depth = Tree::depth_required(block_count);
+            let bits = Tree::storage_bits_required(block_count);
+            assert_eq!(depth, 1, "block_count = {block_count}");
+            assert_eq!(bits, 1 * NON_LEAF + 2 * LEAF, "block_count = {block_count}");
+        }
+
+        // 3 to 4 blocks: depth 2
+        //        2
+        //    2       2
+        //  1   1   1   1
+        for block_count in [3, 4] {
+            let depth = Tree::depth_required(block_count);
+            let bits = Tree::storage_bits_required(block_count);
+            assert_eq!(depth, 2, "block_count = {block_count}");
+            assert_eq!(bits, 3 * NON_LEAF + 4 * LEAF, "block_count = {block_count}");
+        }
+
+        // 5 to 8 blocks: depth 3
+        //        2
+        //    2       2
+        //  2   2   2   2
+        // 1 1 1 1 1 1 1 1
+        for block_count in [5, 6, 7, 8] {
+            let depth = Tree::depth_required(block_count);
+            let bits = Tree::storage_bits_required(block_count);
+            assert_eq!(depth, 3, "block_count = {block_count}");
+            assert_eq!(bits, 7 * NON_LEAF + 8 * LEAF, "block_count = {block_count}");
+        }
     }
 
     // offsets:
