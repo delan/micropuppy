@@ -34,7 +34,6 @@ impl Allocator {
         let tree_block_count = unsafe { end.offset_from(start_aligned) } as usize;
         // Convert from bits to bytes, rounding up
         let tree_len = (Tree::storage_bits_required(tree_block_count) + 7) / 8;
-        let tree_depth = Tree::depth_required(tree_block_count);
 
         let storage = unsafe { slice::from_raw_parts_mut(start as *mut _, tree_len) };
 
@@ -44,7 +43,7 @@ impl Allocator {
         let heap_len_pages = unsafe { end.offset_from(heap) } as usize;
 
         Self {
-            tree: Tree::new(storage, tree_depth),
+            tree: Tree::new(storage, tree_block_count),
             heap,
             tree_len,
             heap_len_pages,
@@ -111,7 +110,7 @@ mod tests {
         let end = unsafe { base.add(0x100000) };
 
         let mut allocator = Allocator::new(start as *const _, end as *const _);
-        assert_eq!(allocator.tree_len, 128);
+        assert_eq!(allocator.tree_len, 96);
         assert_eq!(allocator.heap_len_pages, 254);
 
         let a1 = allocator.allocate(13)?;

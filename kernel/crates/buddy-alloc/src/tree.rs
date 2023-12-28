@@ -1,4 +1,4 @@
-use core::{fmt, iter, mem};
+use core::{fmt, iter};
 
 use bitvec::prelude::*;
 use num::AsUsize;
@@ -6,7 +6,9 @@ use num::AsUsize;
 #[derive(Debug)]
 pub struct Tree<'s> {
     storage: &'s mut BitSlice<u8, Msb0>,
+    leaf_blocks: usize,
     depth: usize,
+    first_leaf: usize,
 }
 
 #[derive(PartialEq, Eq, Debug)]
@@ -29,6 +31,11 @@ pub enum Action<T> {
 }
 
 impl<'s> Tree<'s> {
+    /// Size, in bits, of a non-leaf block
+    const NONLEAF_BITS: usize = 2;
+    /// Size, in bits, of a leaf block
+    const LEAF_BITS: usize = 1;
+
     /// Returns the number of bits required to store a tree with at least the specified number of
     /// leaf blocks.
     pub fn storage_bits_required(leaf_blocks: usize) -> usize {
@@ -37,37 +44,38 @@ impl<'s> Tree<'s> {
         let leaf_blocks = leaf_blocks.next_power_of_two();
         let nonleaf_blocks = leaf_blocks - 1;
 
-        nonleaf_blocks * 2 + leaf_blocks * 2
+        nonleaf_blocks * Self::NONLEAF_BITS + leaf_blocks * Self::LEAF_BITS
     }
 
-    pub fn depth_required(block_count: usize) -> usize {
-        match block_count {
-            0 => 0,
-            1 => 0,
-            other => other.next_power_of_two().ilog2().as_usize(),
-        }
-    }
+    pub fn new(storage: &'s mut [u8], leaf_blocks: usize) -> Self {
+        // i have no leaf blocks and i must store state (a tree with no leaf blocks can't manage any
+        // allocations)
+        assert!(leaf_blocks > 0, "tree must have at least 1 leaf block");
 
-    pub fn new(storage: &'s mut [u8], depth: usize) -> Self {
-        // a tree with depth 0 has a single block, and its state would just be a boolean
-        assert!(depth >= 1, "tree must have depth of at least 1");
+        let depth = leaf_blocks.next_power_of_two().ilog2().as_usize();
+        let first_leaf = (1 << depth) - 1;
 
         // we must be able to store a complete tree's worth of blocks
         let storage = storage.view_bits_mut();
-        let block_count = (1 << (depth + 1)) - 1;
-        let bits = block_count * 2;
+        let bits = Self::storage_bits_required(leaf_blocks);
         assert!(
             storage.len() >= bits,
-            "storage must be at least {bits} bits wide to store a tree of depth {depth}"
+            "storage must be at least {bits} bits wide to store a tree with {leaf_blocks} leaf blocks"
         );
 
+        // the storage we're provided might be wider than required
         let storage = &mut storage[0..bits];
 
         // initially, every block is free
         // TODO: can we do this without inlining the encoding of BlockState::Free?
         storage.fill(false);
 
-        Self { storage, depth }
+        Self {
+            storage,
+            leaf_blocks,
+            depth,
+            first_leaf,
+        }
     }
 
     pub fn allocate(&mut self, size: usize) -> Result<Allocation, OutOfMemoryError> {
@@ -233,21 +241,53 @@ impl<'s> Tree<'s> {
     fn state(&self, node: BlockIndex) -> BlockState {
         assert!(self.has_block(node));
 
-        let index = 2 * node.0;
-        let state = self.storage[index..index + 2].load::<u8>();
+        if node.0 < self.first_leaf {
+            let index = 2 * node.0;
+            let subdivided = self.storage[index];
+            let allocated_or_full = self.storage[index + 1];
 
-        // SAFETY: BlockState is repr(u8) and variants are numbered such that they fit within two
-        // bits.
-        unsafe { mem::transmute::<u8, BlockState>(state) }
+            match (subdivided, allocated_or_full) {
+                (false, false) => BlockState::Free,
+                (false, true) => BlockState::Allocated,
+                (true, false) => BlockState::Subdivided,
+                (true, true) => BlockState::Full,
+            }
+        } else {
+            let index = 2 * self.first_leaf + (node.0 - self.first_leaf);
+            let allocated = self.storage[index];
+
+            if !allocated {
+                BlockState::Free
+            } else {
+                BlockState::Allocated
+            }
+        }
     }
 
     fn set_state(&mut self, node: BlockIndex, state: BlockState) {
         assert!(self.has_block(node));
 
-        let index = 2 * node.0;
-        let state = state as u8;
+        if node.0 < self.first_leaf {
+            let index = 2 * node.0;
+            let (subdivided, allocated_or_full) = match state {
+                BlockState::Free => (false, false),
+                BlockState::Allocated => (false, true),
+                BlockState::Subdivided => (true, false),
+                BlockState::Full => (true, true),
+            };
 
-        self.storage[index..index + 2].store(state);
+            self.storage.set(index, subdivided);
+            self.storage.set(index + 1, allocated_or_full);
+        } else {
+            let index = 2 * self.first_leaf + (node.0 - self.first_leaf);
+            let allocated = match state {
+                BlockState::Free => false,
+                BlockState::Allocated => true,
+                _ => panic!(),
+            };
+
+            self.storage.set(index, allocated);
+        }
     }
 
     fn blocks(&self) -> impl Iterator<Item = BlockIndex> + '_ {
@@ -283,10 +323,9 @@ impl<'s> Tree<'s> {
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
-#[repr(u8)]
 pub enum BlockState {
     /// Block has no allocated sub-blocks.
-    Free = 0,
+    Free,
     /// Block has been subdivided and has one or more allocated sub-blocks and one or more
     /// reachable and free sub-blocks.
     Subdivided,
@@ -386,54 +425,57 @@ mod tests {
 
     #[test]
     fn storage_depth_required() {
-        // size, in bits, of each type of block
-        const NONLEAF: usize = 2;
-        const LEAF: usize = 2;
+        macro_rules! assert_storage_bits_required {
+            ($leaf_blocks:expr, $storage_bits_required:expr) => {
+                let bits = Tree::storage_bits_required($leaf_blocks);
+                assert_eq!(
+                    bits, $storage_bits_required,
+                    "with leaf_blocks = {}",
+                    $leaf_blocks
+                );
+            };
+        }
 
-        // 0 leaf blocks: depth undefined
+        // 0 leaf blocks:
         // -> should panic, no test
 
-        // 1 leaf block: depth 0
+        // 1 leaf block:
         //        1
         for leaf_blocks in [1] {
-            let depth = Tree::depth_required(leaf_blocks);
-            let bits = Tree::storage_bits_required(leaf_blocks);
-            assert_eq!(depth, 0, "block_count = {leaf_blocks}");
-            assert_eq!(bits, 1 * LEAF, "block_count = {leaf_blocks}");
+            assert_storage_bits_required!(leaf_blocks, 1 * Tree::LEAF_BITS);
         }
 
-        // 2 leaf blocks: depth 1
+        // 2 leaf blocks:
         //        2
         //    1       1
-        //
         for leaf_blocks in [2] {
-            let depth = Tree::depth_required(leaf_blocks);
-            let bits = Tree::storage_bits_required(leaf_blocks);
-            assert_eq!(depth, 1, "block_count = {leaf_blocks}");
-            assert_eq!(bits, 1 * NONLEAF + 2 * LEAF, "block_count = {leaf_blocks}");
+            assert_storage_bits_required!(
+                leaf_blocks,
+                1 * Tree::NONLEAF_BITS + 2 * Tree::LEAF_BITS
+            );
         }
 
-        // 3 to 4 leaf blocks: depth 2
+        // 3 to 4 leaf blocks:
         //        2
         //    2       2
         //  1   1   1   1
         for leaf_blocks in [3, 4] {
-            let depth = Tree::depth_required(leaf_blocks);
-            let bits = Tree::storage_bits_required(leaf_blocks);
-            assert_eq!(depth, 2, "block_count = {leaf_blocks}");
-            assert_eq!(bits, 3 * NONLEAF + 4 * LEAF, "block_count = {leaf_blocks}");
+            assert_storage_bits_required!(
+                leaf_blocks,
+                3 * Tree::NONLEAF_BITS + 4 * Tree::LEAF_BITS
+            );
         }
 
-        // 5 to 8 leaf blocks: depth 3
+        // 5 to 8 leaf blocks:
         //        2
         //    2       2
         //  2   2   2   2
         // 1 1 1 1 1 1 1 1
         for leaf_blocks in [5, 6, 7, 8] {
-            let depth = Tree::depth_required(leaf_blocks);
-            let bits = Tree::storage_bits_required(leaf_blocks);
-            assert_eq!(depth, 3, "block_count = {leaf_blocks}");
-            assert_eq!(bits, 7 * NONLEAF + 8 * LEAF, "block_count = {leaf_blocks}");
+            assert_storage_bits_required!(
+                leaf_blocks,
+                7 * Tree::NONLEAF_BITS + 8 * Tree::LEAF_BITS
+            );
         }
     }
 
@@ -452,7 +494,7 @@ mod tests {
     #[test]
     fn allocate() {
         let mut storage = [0; 4];
-        let mut tree = Tree::new(&mut storage, 3);
+        let mut tree = Tree::new(&mut storage, 8);
 
         // node index 7
         assert_eq!(tree.allocate(1), Ok(Allocation { offset: 0, size: 1 }));
@@ -488,7 +530,7 @@ mod tests {
     #[test]
     fn preorder_descend() {
         let mut storage = [0; 4];
-        let tree = Tree::new(&mut storage, 3);
+        let tree = Tree::new(&mut storage, 8);
 
         let mut preorder = Vec::with_capacity(tree.block_count());
         let result = tree.preorder(|node| -> Action<()> {
@@ -510,7 +552,7 @@ mod tests {
     #[test]
     fn preorder_skip() {
         let mut storage = [0; 4];
-        let tree = Tree::new(&mut storage, 3);
+        let tree = Tree::new(&mut storage, 8);
 
         let mut preorder = Vec::with_capacity(tree.block_count());
         let result = tree.preorder(|node| -> Action<()> {
@@ -536,7 +578,7 @@ mod tests {
     #[test]
     fn preorder_yield() {
         let mut storage = [0; 4];
-        let tree = Tree::new(&mut storage, 3);
+        let tree = Tree::new(&mut storage, 8);
 
         let mut preorder = Vec::with_capacity(tree.block_count());
         let result = tree.preorder(|node| {
