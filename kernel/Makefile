@@ -1,7 +1,7 @@
 .POSIX:
 
 CARGOFLAGS =
-CARGOFLAGS_TARGET = -Zbuild-std --target aarch64-unknown-none.json
+CARGOFLAGS_TARGET = -Zbuild-std --target ../aarch64-unknown-none.json
 
 .PHONY: internal
 internal:
