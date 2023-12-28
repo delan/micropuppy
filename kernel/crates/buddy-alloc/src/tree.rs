@@ -92,17 +92,14 @@ impl<'s> Tree<'s> {
             let at_requested_depth = block.depth() == depth;
             match (at_requested_depth, self.state(block)) {
                 // if we're at the requested depth and have found a free block, claim it
-                (true, BlockState::Block { allocated: false }) => Action::Yield(block),
+                (true, BlockState::BlockFree) => Action::Yield(block),
                 // ...but, if the block isn't free, there's no point descending further since the
                 // block's sub-blocks will all have a higher depth (and thus smaller size) than
                 // requested.
                 (true, _) => Action::Skip,
                 // if we're not yet at the requested depth, don't descend into blocks with no
                 // reachable, free sub-blocks
-                (
-                    false,
-                    BlockState::Block { allocated: true } | BlockState::Superblock { full: true },
-                ) => Action::Skip,
+                (false, BlockState::BlockAllocated | BlockState::SuperblockFull) => Action::Skip,
                 // ...but, descend into blocks that may have reachable, free sub-blocks.
                 (false, _) => Action::Descend,
             }
@@ -112,7 +109,7 @@ impl<'s> Tree<'s> {
         let block = block.ok_or(OutOfMemoryError)?;
 
         // mark the block as allocated
-        self.set_state(block, BlockState::Block { allocated: true });
+        self.set_state(block, BlockState::BlockAllocated);
 
         // we know the state of our allocated block has changed from free to allocated.
         //
@@ -129,27 +126,24 @@ impl<'s> Tree<'s> {
 
         // mark as many superblocks as full as possible
         for (buddy, superblock) in &mut buddies {
-            let superblock_is_full =
-                match self.state(buddy) {
-                    BlockState::Block { allocated: true }
-                    | BlockState::Superblock { full: true } => true,
-                    BlockState::Block { allocated: false }
-                    | BlockState::Superblock { full: false } => false,
-                };
+            let superblock_is_full = match self.state(buddy) {
+                BlockState::BlockAllocated | BlockState::SuperblockFull => true,
+                BlockState::BlockFree | BlockState::SuperblockFree => false,
+            };
 
             if !superblock_is_full {
                 // since the item has been consumed from the iterator, we need to mark the
                 // superblock as subdivided here otherwise it will be missed by the loop below
-                self.set_state(superblock, BlockState::Superblock { full: false });
+                self.set_state(superblock, BlockState::SuperblockFree);
                 break;
             }
 
-            self.set_state(superblock, BlockState::Superblock { full: true });
+            self.set_state(superblock, BlockState::SuperblockFull);
         }
 
         // mark remaining superblocks as subdivided
         for (_, superblock) in &mut buddies {
-            self.set_state(superblock, BlockState::Superblock { full: false });
+            self.set_state(superblock, BlockState::SuperblockFree);
         }
 
         Ok(Allocation {
@@ -167,16 +161,16 @@ impl<'s> Tree<'s> {
             match (self.state(block), at_correct_offset) {
                 // if we've found an allocated block with the correct offset, it's the block
                 // corresponding to the allocation
-                (BlockState::Block { allocated: true }, true) => Action::Yield(block),
+                (BlockState::BlockAllocated, true) => Action::Yield(block),
                 // ...but, if the block is allocated and has the wrong offset, there's no point
                 // searching its subblocks as they can't possibly contain our allocation.
-                (BlockState::Block { allocated: true }, false) => Action::Skip,
+                (BlockState::BlockAllocated, false) => Action::Skip,
                 // a free block has no allocated sub-blocks, so it can't possibly contain our
                 // allocation
-                (BlockState::Block { allocated: false }, _) => Action::Skip,
+                (BlockState::BlockFree, _) => Action::Skip,
                 // ...but if the block has allocated sub-blocks, we need to search them for our
                 // allocation.
-                (BlockState::Superblock { .. }, _) => Action::Descend,
+                (BlockState::SuperblockFree | BlockState::SuperblockFull, _) => Action::Descend,
             }
         });
 
@@ -185,7 +179,7 @@ impl<'s> Tree<'s> {
         let block = block.ok_or(DoubleFreeError)?;
 
         // mark the block as free
-        self.set_state(block, BlockState::Block { allocated: false });
+        self.set_state(block, BlockState::BlockFree);
 
         // we know the state of our allocated block has changed from allocated to free.
         //
@@ -199,21 +193,19 @@ impl<'s> Tree<'s> {
 
         // mark as many superblocks as free as possible
         for (buddy, superblock) in &mut buddies {
-            let superblock_is_free = self.state(buddy) == BlockState::Block { allocated: false };
-
-            if !superblock_is_free {
+            if self.state(buddy) != BlockState::BlockFree {
                 // since the item has been consumed from the iterator, we need to mark the
                 // superblock as subdivided here otherwise it will be missed by the loop below
-                self.set_state(superblock, BlockState::Superblock { full: false });
+                self.set_state(superblock, BlockState::SuperblockFree);
                 break;
             }
 
-            self.set_state(superblock, BlockState::Block { allocated: false });
+            self.set_state(superblock, BlockState::BlockFree);
         }
 
         // mark remaining superblocks as subdivided
         for (_, superblock) in &mut buddies {
-            self.set_state(superblock, BlockState::Superblock { full: false });
+            self.set_state(superblock, BlockState::SuperblockFree);
         }
 
         Ok(())
@@ -253,14 +245,19 @@ impl<'s> Tree<'s> {
             let allocated_or_full = self.storage[index + 1];
 
             match (subdivided, allocated_or_full) {
-                (false, allocated) => BlockState::Block { allocated },
-                (true, full) => BlockState::Superblock { full },
+                (false, false) => BlockState::BlockFree,
+                (false, true) => BlockState::BlockAllocated,
+                (true, false) => BlockState::SuperblockFree,
+                (true, true) => BlockState::SuperblockFull,
             }
         } else {
             let index = 2 * self.first_leaf + (node.0 - self.first_leaf);
             let allocated = self.storage[index];
 
-            BlockState::Block { allocated }
+            match allocated {
+                false => BlockState::BlockFree,
+                true => BlockState::BlockAllocated,
+            }
         }
     }
 
@@ -270,8 +267,10 @@ impl<'s> Tree<'s> {
         if node.0 < self.first_leaf {
             let index = 2 * node.0;
             let (subdivided, allocated_or_full) = match state {
-                BlockState::Block { allocated } => (false, allocated),
-                BlockState::Superblock { full } => (true, full),
+                BlockState::BlockFree => (false, false),
+                BlockState::BlockAllocated => (false, true),
+                BlockState::SuperblockFree => (true, false),
+                BlockState::SuperblockFull => (true, true),
             };
 
             self.storage.set(index, subdivided);
@@ -279,8 +278,11 @@ impl<'s> Tree<'s> {
         } else {
             let index = 2 * self.first_leaf + (node.0 - self.first_leaf);
             let allocated = match state {
-                BlockState::Block { allocated } => allocated,
-                BlockState::Superblock { .. } => panic!("leaf blocks cannot be superblocks"),
+                BlockState::BlockFree => false,
+                BlockState::BlockAllocated => true,
+                BlockState::SuperblockFree | BlockState::SuperblockFull => {
+                    panic!("leaf blocks cannot be superblocks")
+                }
             };
 
             self.storage.set(index, allocated);
@@ -321,16 +323,14 @@ impl<'s> Tree<'s> {
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum BlockState {
-    /// Block has not been subdivided.
-    Block {
-        /// True if the block has been allocated.
-        allocated: bool,
-    },
-    /// Block has been subdivided and has one or more allocated sub-blocks.
-    Superblock {
-        /// True if there are no reachable and free sub-blocks.
-        full: bool,
-    },
+    /// Block has not been subdivided nor allocated.
+    BlockFree,
+    /// Block has not been subdivided but has been allocated.
+    BlockAllocated,
+    /// Block is a superblock and has one or more allocated sub-blocks.
+    SuperblockFree,
+    /// Block is a superblock and has no reachable and free sub-blocks.
+    SuperblockFull,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -392,10 +392,10 @@ impl fmt::Display for Dot<'_, '_> {
             const BLUE: &str = "#27a4dd";
             const RED: &str = "#f1646c";
             let (fillcolor, shape) = match tree.state(node_index) {
-                BlockState::Block { allocated: false } => (GREEN, "circle"),
-                BlockState::Superblock { full: false } => (BLUE, "Mcircle"),
-                BlockState::Block { allocated: true } => (RED, "square"),
-                BlockState::Superblock { full: true } => (RED, "Msquare"),
+                BlockState::BlockFree => (GREEN, "circle"),
+                BlockState::SuperblockFree => (BLUE, "Mcircle"),
+                BlockState::BlockAllocated => (RED, "square"),
+                BlockState::SuperblockFull => (RED, "Msquare"),
             };
 
             writeln!(
