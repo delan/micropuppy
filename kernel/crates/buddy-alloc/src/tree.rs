@@ -3,17 +3,29 @@ use core::{fmt, iter};
 use bitvec::prelude::*;
 use num::AsUsize;
 
+/// A binary tree tracking the state of arbitrarily-sized memory blocks within a buddy allocation
+/// scheme.
 #[derive(Debug)]
 pub struct Tree<'s> {
+    /// Bit-level storage of block states.
     storage: &'s mut BitSlice<u8, Msb0>,
+    /// Count of leaf blocks in the tree.
     leaf_blocks: usize,
+    /// Total depth of the tree, or equivalently, the number of edges between the root block and a
+    /// leaf block.
     depth: usize,
+    /// Block index of the first leaf block.
     first_leaf: usize,
 }
 
+/// A successful allocation, measured in blocks.
 #[derive(PartialEq, Eq, Debug)]
 pub struct Allocation {
+    /// Start of the allocation.
     pub offset: usize,
+    /// Number of blocks spanned by this allocation.
+    ///
+    /// May be larger than the requested number of blocks.
     pub size: usize,
 }
 
@@ -23,23 +35,16 @@ pub struct OutOfMemoryError;
 #[derive(PartialEq, Eq, Debug)]
 pub struct DoubleFreeError;
 
-#[derive(Debug)]
-pub enum Action<T> {
-    Yield(T),
-    Skip,
-    Descend,
-}
-
 impl<'s> Tree<'s> {
-    /// Size, in bits, of a non-leaf block
+    /// Size, in bits, of a non-leaf block.
     const NONLEAF_BITS: usize = 2;
-    /// Size, in bits, of a leaf block
+    /// Size, in bits, of a leaf block.
     const LEAF_BITS: usize = 1;
 
     /// Returns the number of bits required to store a tree with at least the specified number of
     /// leaf blocks.
     pub fn storage_bits_required(leaf_blocks: usize) -> usize {
-        assert!(leaf_blocks != 0, "tree must have at least 1 leaf block");
+        assert!(leaf_blocks > 0, "tree must have at least 1 leaf block");
 
         let leaf_blocks = leaf_blocks.next_power_of_two();
         let nonleaf_blocks = leaf_blocks - 1;
@@ -47,6 +52,7 @@ impl<'s> Tree<'s> {
         nonleaf_blocks * Self::NONLEAF_BITS + leaf_blocks * Self::LEAF_BITS
     }
 
+    /// Creates a new tree with all blocks initially marked as free.
     pub fn new(storage: &'s mut [u8], leaf_blocks: usize) -> Self {
         // i have no leaf blocks and i must store state (a tree with no leaf blocks can't manage any
         // allocations)
@@ -78,6 +84,10 @@ impl<'s> Tree<'s> {
         }
     }
 
+    /// Attempts to allocate `size` blocks.
+    ///
+    /// If successful, the returned [`Allocation`] may be larger than the requested size due to
+    /// rounding.
     pub fn allocate(&mut self, size: usize) -> Result<Allocation, OutOfMemoryError> {
         // determine block height and depth for requested allocation
         let height = match size {
@@ -92,14 +102,14 @@ impl<'s> Tree<'s> {
             let at_requested_depth = block.depth() == depth;
             match (at_requested_depth, self.state(block)) {
                 // if we're at the requested depth and have found a free block, claim it
-                (true, BlockState::BlockFree) => Action::Yield(block),
-                // ...but, if the block isn't free, there's no point descending further since the
-                // block's sub-blocks will all have a higher depth (and thus smaller size) than
-                // requested.
+                (true, BlockState::Free) => Action::Yield(block),
+                // ...but, if the block isn't free (because it's either been allocated or
+                // subdivided), there's no point descending further since the block's sub-blocks
+                // will all have a higher depth (and thus smaller size) than requested.
                 (true, _) => Action::Skip,
                 // if we're not yet at the requested depth, don't descend into blocks with no
                 // reachable, free sub-blocks
-                (false, BlockState::BlockAllocated | BlockState::SuperblockFull) => Action::Skip,
+                (false, BlockState::Allocated | BlockState::SuperblockFull) => Action::Skip,
                 // ...but, descend into blocks that may have reachable, free sub-blocks.
                 (false, _) => Action::Descend,
             }
@@ -109,41 +119,42 @@ impl<'s> Tree<'s> {
         let block = block.ok_or(OutOfMemoryError)?;
 
         // mark the block as allocated
-        self.set_state(block, BlockState::BlockAllocated);
+        self.set_state(block, BlockState::Allocated);
 
-        // we know the state of our allocated block has changed from free to allocated.
+        // we know the state of our block has changed from free to allocated.
         //
-        // we now need to mark every superblock of our block as either subdivided or full.
-        // - a block with two full or allocated sub-blocks becomes full (no new allocations can
-        //   take place within the block)
-        // - otherwise, the block must have at least one subdivided sub-block, and thus becomes
-        //   subdivided (the block cannot be allocated, but it contains sub-blocks available for
+        // we now need to mark every superblock of our block as either a superblock or a full
+        // superblock.
+        // - a block where both sub-blocks are either full superblocks or allocated becomes a full
+        //   superblock (no new allocations can take place within the block)
+        // - otherwise, the block must have at least one superblock as a sub-block, and thus becomes
+        //   a superblock (the block cannot be allocated, but it contains sub-blocks available for
         //   allocation)
         //
-        // since we just allocated a sub-block, it's not possible for any of the superblocks to
-        // become free.
+        // since we just allocated a block, it's not possible for any of the superblocks to become
+        // free.
         let mut buddies = self.buddies(block);
 
-        // mark as many superblocks as full as possible
-        for (buddy, superblock) in &mut buddies {
-            let superblock_is_full = match self.state(buddy) {
-                BlockState::BlockAllocated | BlockState::SuperblockFull => true,
-                BlockState::BlockFree | BlockState::SuperblockFree => false,
+        // mark as many blocks as full as possible
+        for (buddy, block) in &mut buddies {
+            let block_is_full = match self.state(buddy) {
+                BlockState::Allocated | BlockState::SuperblockFull => true,
+                BlockState::Free | BlockState::Superblock => false,
             };
 
-            if !superblock_is_full {
-                // since the item has been consumed from the iterator, we need to mark the
-                // superblock as subdivided here otherwise it will be missed by the loop below
-                self.set_state(superblock, BlockState::SuperblockFree);
+            if !block_is_full {
+                // since the item has been consumed from the iterator, we need to mark the block as
+                // a superblock here otherwise it will be missed by the loop below
+                self.set_state(block, BlockState::Superblock);
                 break;
             }
 
-            self.set_state(superblock, BlockState::SuperblockFull);
+            self.set_state(block, BlockState::SuperblockFull);
         }
 
-        // mark remaining superblocks as subdivided
-        for (_, superblock) in &mut buddies {
-            self.set_state(superblock, BlockState::SuperblockFree);
+        // mark remaining blocks as superblocks
+        for (_, block) in &mut buddies {
+            self.set_state(block, BlockState::Superblock);
         }
 
         Ok(Allocation {
@@ -152,6 +163,7 @@ impl<'s> Tree<'s> {
         })
     }
 
+    /// Frees a previous [`Allocation`], identified by its offset.
     pub fn free(&mut self, offset: usize) -> Result<(), DoubleFreeError> {
         // find the block corresponding to this allocation - the offset does not uniquely identify a
         // block, but does uniquely identify an allocation
@@ -161,16 +173,16 @@ impl<'s> Tree<'s> {
             match (self.state(block), at_correct_offset) {
                 // if we've found an allocated block with the correct offset, it's the block
                 // corresponding to the allocation
-                (BlockState::BlockAllocated, true) => Action::Yield(block),
+                (BlockState::Allocated, true) => Action::Yield(block),
                 // ...but, if the block is allocated and has the wrong offset, there's no point
                 // searching its subblocks as they can't possibly contain our allocation.
-                (BlockState::BlockAllocated, false) => Action::Skip,
+                (BlockState::Allocated, false) => Action::Skip,
                 // a free block has no allocated sub-blocks, so it can't possibly contain our
                 // allocation
-                (BlockState::BlockFree, _) => Action::Skip,
+                (BlockState::Free, _) => Action::Skip,
                 // ...but if the block has allocated sub-blocks, we need to search them for our
                 // allocation.
-                (BlockState::SuperblockFree | BlockState::SuperblockFull, _) => Action::Descend,
+                (BlockState::Superblock | BlockState::SuperblockFull, _) => Action::Descend,
             }
         });
 
@@ -179,33 +191,34 @@ impl<'s> Tree<'s> {
         let block = block.ok_or(DoubleFreeError)?;
 
         // mark the block as free
-        self.set_state(block, BlockState::BlockFree);
+        self.set_state(block, BlockState::Free);
 
-        // we know the state of our allocated block has changed from allocated to free.
+        // we know the state of our block has changed from allocated to free.
         //
-        // we now need to mark every superblock of our block as either free or subdivided.
+        // we now need to mark every superblock of our block as either free or as a (no longer full)
+        // superblock.
         // - a block with two free children becomes free (the block could now be allocated)
-        // - otherwise, the block has at least one allocated sub-block, and thus becomes subdivided
+        // - otherwise, the block has at least one allocated sub-block, and thus becomes a
+        //   superblock
         //
-        // since we just freed a sub-block, it's not possible for any of the superblocks to become
-        // full.
+        // since we just freed a block, it's not possible for any of the superblocks to become full.
         let mut buddies = self.buddies(block);
 
-        // mark as many superblocks as free as possible
-        for (buddy, superblock) in &mut buddies {
-            if self.state(buddy) != BlockState::BlockFree {
-                // since the item has been consumed from the iterator, we need to mark the
-                // superblock as subdivided here otherwise it will be missed by the loop below
-                self.set_state(superblock, BlockState::SuperblockFree);
+        // mark as many blocks as free as possible
+        for (buddy, block) in &mut buddies {
+            if self.state(buddy) != BlockState::Free {
+                // since the item has been consumed from the iterator, we need to mark the block as
+                // a superblock here otherwise it will be missed by the loop below
+                self.set_state(block, BlockState::Superblock);
                 break;
             }
 
-            self.set_state(superblock, BlockState::BlockFree);
+            self.set_state(block, BlockState::Free);
         }
 
-        // mark remaining superblocks as subdivided
-        for (_, superblock) in &mut buddies {
-            self.set_state(superblock, BlockState::SuperblockFree);
+        // mark remaining blocks as subdivided
+        for (_, block) in &mut buddies {
+            self.set_state(block, BlockState::Superblock);
         }
 
         Ok(())
@@ -236,51 +249,51 @@ impl<'s> Tree<'s> {
         preorder(self, BlockIndex::root(), &mut visitor)
     }
 
-    fn state(&self, node: BlockIndex) -> BlockState {
-        assert!(self.has_block(node));
+    fn state(&self, block: BlockIndex) -> BlockState {
+        assert!(self.has_block(block));
 
-        if node.0 < self.first_leaf {
-            let index = 2 * node.0;
+        if block.0 < self.first_leaf {
+            let index = 2 * block.0;
             let subdivided = self.storage[index];
             let allocated_or_full = self.storage[index + 1];
 
             match (subdivided, allocated_or_full) {
-                (false, false) => BlockState::BlockFree,
-                (false, true) => BlockState::BlockAllocated,
-                (true, false) => BlockState::SuperblockFree,
+                (false, false) => BlockState::Free,
+                (false, true) => BlockState::Allocated,
+                (true, false) => BlockState::Superblock,
                 (true, true) => BlockState::SuperblockFull,
             }
         } else {
-            let index = 2 * self.first_leaf + (node.0 - self.first_leaf);
+            let index = 2 * self.first_leaf + (block.0 - self.first_leaf);
             let allocated = self.storage[index];
 
             match allocated {
-                false => BlockState::BlockFree,
-                true => BlockState::BlockAllocated,
+                false => BlockState::Free,
+                true => BlockState::Allocated,
             }
         }
     }
 
-    fn set_state(&mut self, node: BlockIndex, state: BlockState) {
-        assert!(self.has_block(node));
+    fn set_state(&mut self, block: BlockIndex, state: BlockState) {
+        assert!(self.has_block(block));
 
-        if node.0 < self.first_leaf {
-            let index = 2 * node.0;
+        if block.0 < self.first_leaf {
+            let index = 2 * block.0;
             let (subdivided, allocated_or_full) = match state {
-                BlockState::BlockFree => (false, false),
-                BlockState::BlockAllocated => (false, true),
-                BlockState::SuperblockFree => (true, false),
+                BlockState::Free => (false, false),
+                BlockState::Allocated => (false, true),
+                BlockState::Superblock => (true, false),
                 BlockState::SuperblockFull => (true, true),
             };
 
             self.storage.set(index, subdivided);
             self.storage.set(index + 1, allocated_or_full);
         } else {
-            let index = 2 * self.first_leaf + (node.0 - self.first_leaf);
+            let index = 2 * self.first_leaf + (block.0 - self.first_leaf);
             let allocated = match state {
-                BlockState::BlockFree => false,
-                BlockState::BlockAllocated => true,
-                BlockState::SuperblockFree | BlockState::SuperblockFull => {
+                BlockState::Free => false,
+                BlockState::Allocated => true,
+                BlockState::Superblock | BlockState::SuperblockFull => {
                     panic!("leaf blocks cannot be superblocks")
                 }
             };
@@ -321,14 +334,21 @@ impl<'s> Tree<'s> {
     }
 }
 
+#[derive(Debug)]
+enum Action<T> {
+    Yield(T),
+    Skip,
+    Descend,
+}
+
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub enum BlockState {
+enum BlockState {
     /// Block has not been subdivided nor allocated.
-    BlockFree,
+    Free,
     /// Block has not been subdivided but has been allocated.
-    BlockAllocated,
+    Allocated,
     /// Block is a superblock and has one or more allocated sub-blocks.
-    SuperblockFree,
+    Superblock,
     /// Block is a superblock and has no reachable and free sub-blocks.
     SuperblockFull,
 }
@@ -387,27 +407,27 @@ impl fmt::Display for Dot<'_, '_> {
 
         writeln!(f, "digraph {{")?;
         writeln!(f, "  node [style=filled, fixedsize=true];")?;
-        for node_index in tree.blocks() {
+        for block in tree.blocks() {
             const GREEN: &str = "#9dd5c0";
             const BLUE: &str = "#27a4dd";
             const RED: &str = "#f1646c";
-            let (fillcolor, shape) = match tree.state(node_index) {
-                BlockState::BlockFree => (GREEN, "circle"),
-                BlockState::SuperblockFree => (BLUE, "Mcircle"),
-                BlockState::BlockAllocated => (RED, "square"),
+            let (fillcolor, shape) = match tree.state(block) {
+                BlockState::Free => (GREEN, "circle"),
+                BlockState::Superblock => (BLUE, "Mcircle"),
+                BlockState::Allocated => (RED, "square"),
                 BlockState::SuperblockFull => (RED, "Msquare"),
             };
 
             writeln!(
                 f,
                 "  n{} [fillcolor=\"{}\", shape=\"{}\"];",
-                node_index.0, fillcolor, shape
+                block.0, fillcolor, shape
             )?;
 
-            let (left, right) = node_index.subblocks();
+            let (left, right) = block.subblocks();
             for child in [left, right] {
                 if tree.has_block(child) {
-                    writeln!(f, "  n{} -> n{};", node_index.0, child.0)?;
+                    writeln!(f, "  n{} -> n{};", block.0, child.0)?;
                 }
             }
         }
@@ -483,7 +503,7 @@ mod tests {
     //  0   2   4   6   depth = 2, height = 1
     // 0 1 2 3 4 5 6 7  depth = 3, height = 0
     //
-    // node indices:
+    // block indices:
     //        0         depth = 0, height = 3
     //    1       2     depth = 1, height = 2
     //  3   4   5   6   depth = 2, height = 1
@@ -494,31 +514,31 @@ mod tests {
         let mut storage = [0; 4];
         let mut tree = Tree::new(&mut storage, 8);
 
-        // node index 7
+        // block index 7
         assert_eq!(tree.allocate(1), Ok(Allocation { offset: 0, size: 1 }));
         eprintln!("{}", tree.dot());
 
-        // node index 8
+        // block index 8
         assert_eq!(tree.allocate(1), Ok(Allocation { offset: 1, size: 1 }));
         eprintln!("{}", tree.dot());
 
-        // node index 9
+        // block index 9
         assert_eq!(tree.allocate(1), Ok(Allocation { offset: 2, size: 1 }));
         eprintln!("{}", tree.dot());
 
-        // node index 5
+        // block index 5
         assert_eq!(tree.allocate(2), Ok(Allocation { offset: 4, size: 2 }));
         eprintln!("{}", tree.dot());
 
-        // node index 10
+        // block index 10
         assert_eq!(tree.allocate(1), Ok(Allocation { offset: 3, size: 1 }));
         eprintln!("{}", tree.dot());
 
-        // node index 13
+        // block index 13
         assert_eq!(tree.allocate(1), Ok(Allocation { offset: 6, size: 1 }));
         eprintln!("{}", tree.dot());
 
-        // node index 14
+        // block index 14
         assert_eq!(tree.allocate(1), Ok(Allocation { offset: 7, size: 1 }));
         eprintln!("{}", tree.dot());
 
@@ -531,8 +551,8 @@ mod tests {
         let tree = Tree::new(&mut storage, 8);
 
         let mut preorder = Vec::with_capacity(tree.block_count());
-        let result = tree.preorder(|node| -> Action<()> {
-            preorder.push(node);
+        let result = tree.preorder(|block| -> Action<()> {
+            preorder.push(block);
 
             Action::Descend
         });
@@ -553,10 +573,10 @@ mod tests {
         let tree = Tree::new(&mut storage, 8);
 
         let mut preorder = Vec::with_capacity(tree.block_count());
-        let result = tree.preorder(|node| -> Action<()> {
-            preorder.push(node);
+        let result = tree.preorder(|block| -> Action<()> {
+            preorder.push(block);
 
-            if node.0 == 4 || node.0 == 2 {
+            if block.0 == 4 || block.0 == 2 {
                 Action::Skip
             } else {
                 Action::Descend
@@ -579,11 +599,11 @@ mod tests {
         let tree = Tree::new(&mut storage, 8);
 
         let mut preorder = Vec::with_capacity(tree.block_count());
-        let result = tree.preorder(|node| {
-            preorder.push(node);
+        let result = tree.preorder(|block| {
+            preorder.push(block);
 
-            if node.0 == 5 {
-                Action::Yield(node)
+            if block.0 == 5 {
+                Action::Yield(block)
             } else {
                 Action::Descend
             }
@@ -600,99 +620,99 @@ mod tests {
     }
 
     #[test]
-    fn node_index() {
+    fn block_index() {
         // depth 0, height 3
-        let node = BlockIndex(0);
-        assert_eq!(node.superblock(), None);
-        assert_eq!(node.buddy(), None);
-        assert_eq!(node.depth(), 0);
-        assert_eq!(node.offset(), 0);
+        let block = BlockIndex(0);
+        assert_eq!(block.superblock(), None);
+        assert_eq!(block.buddy(), None);
+        assert_eq!(block.depth(), 0);
+        assert_eq!(block.offset(), 0);
 
         // depth 1, height 2
-        let node = BlockIndex(1);
-        assert_eq!(node.superblock(), Some(BlockIndex(0)));
-        assert_eq!(node.buddy(), Some(BlockIndex(2)));
-        assert_eq!(node.depth(), 1);
-        assert_eq!(node.offset(), 0);
+        let block = BlockIndex(1);
+        assert_eq!(block.superblock(), Some(BlockIndex(0)));
+        assert_eq!(block.buddy(), Some(BlockIndex(2)));
+        assert_eq!(block.depth(), 1);
+        assert_eq!(block.offset(), 0);
 
-        let node = BlockIndex(2);
-        assert_eq!(node.superblock(), Some(BlockIndex(0)));
-        assert_eq!(node.buddy(), Some(BlockIndex(1)));
-        assert_eq!(node.depth(), 1);
-        assert_eq!(node.offset(), 1);
+        let block = BlockIndex(2);
+        assert_eq!(block.superblock(), Some(BlockIndex(0)));
+        assert_eq!(block.buddy(), Some(BlockIndex(1)));
+        assert_eq!(block.depth(), 1);
+        assert_eq!(block.offset(), 1);
 
         // depth 2, height 1
-        let node = BlockIndex(3);
-        assert_eq!(node.superblock(), Some(BlockIndex(1)));
-        assert_eq!(node.buddy(), Some(BlockIndex(4)));
-        assert_eq!(node.depth(), 2);
-        assert_eq!(node.offset(), 0);
+        let block = BlockIndex(3);
+        assert_eq!(block.superblock(), Some(BlockIndex(1)));
+        assert_eq!(block.buddy(), Some(BlockIndex(4)));
+        assert_eq!(block.depth(), 2);
+        assert_eq!(block.offset(), 0);
 
-        let node = BlockIndex(4);
-        assert_eq!(node.superblock(), Some(BlockIndex(1)));
-        assert_eq!(node.buddy(), Some(BlockIndex(3)));
-        assert_eq!(node.depth(), 2);
-        assert_eq!(node.offset(), 1);
+        let block = BlockIndex(4);
+        assert_eq!(block.superblock(), Some(BlockIndex(1)));
+        assert_eq!(block.buddy(), Some(BlockIndex(3)));
+        assert_eq!(block.depth(), 2);
+        assert_eq!(block.offset(), 1);
 
-        let node = BlockIndex(5);
-        assert_eq!(node.superblock(), Some(BlockIndex(2)));
-        assert_eq!(node.buddy(), Some(BlockIndex(6)));
-        assert_eq!(node.depth(), 2);
-        assert_eq!(node.offset(), 2);
+        let block = BlockIndex(5);
+        assert_eq!(block.superblock(), Some(BlockIndex(2)));
+        assert_eq!(block.buddy(), Some(BlockIndex(6)));
+        assert_eq!(block.depth(), 2);
+        assert_eq!(block.offset(), 2);
 
-        let node = BlockIndex(6);
-        assert_eq!(node.superblock(), Some(BlockIndex(2)));
-        assert_eq!(node.buddy(), Some(BlockIndex(5)));
-        assert_eq!(node.depth(), 2);
-        assert_eq!(node.offset(), 3);
+        let block = BlockIndex(6);
+        assert_eq!(block.superblock(), Some(BlockIndex(2)));
+        assert_eq!(block.buddy(), Some(BlockIndex(5)));
+        assert_eq!(block.depth(), 2);
+        assert_eq!(block.offset(), 3);
 
         // depth 3, height 0
-        let node = BlockIndex(7);
-        assert_eq!(node.superblock(), Some(BlockIndex(3)));
-        assert_eq!(node.buddy(), Some(BlockIndex(8)));
-        assert_eq!(node.depth(), 3);
-        assert_eq!(node.offset(), 0);
+        let block = BlockIndex(7);
+        assert_eq!(block.superblock(), Some(BlockIndex(3)));
+        assert_eq!(block.buddy(), Some(BlockIndex(8)));
+        assert_eq!(block.depth(), 3);
+        assert_eq!(block.offset(), 0);
 
-        let node = BlockIndex(8);
-        assert_eq!(node.superblock(), Some(BlockIndex(3)));
-        assert_eq!(node.buddy(), Some(BlockIndex(7)));
-        assert_eq!(node.depth(), 3);
-        assert_eq!(node.offset(), 1);
+        let block = BlockIndex(8);
+        assert_eq!(block.superblock(), Some(BlockIndex(3)));
+        assert_eq!(block.buddy(), Some(BlockIndex(7)));
+        assert_eq!(block.depth(), 3);
+        assert_eq!(block.offset(), 1);
 
-        let node = BlockIndex(9);
-        assert_eq!(node.superblock(), Some(BlockIndex(4)));
-        assert_eq!(node.buddy(), Some(BlockIndex(10)));
-        assert_eq!(node.depth(), 3);
-        assert_eq!(node.offset(), 2);
+        let block = BlockIndex(9);
+        assert_eq!(block.superblock(), Some(BlockIndex(4)));
+        assert_eq!(block.buddy(), Some(BlockIndex(10)));
+        assert_eq!(block.depth(), 3);
+        assert_eq!(block.offset(), 2);
 
-        let node = BlockIndex(10);
-        assert_eq!(node.superblock(), Some(BlockIndex(4)));
-        assert_eq!(node.buddy(), Some(BlockIndex(9)));
-        assert_eq!(node.depth(), 3);
-        assert_eq!(node.offset(), 3);
+        let block = BlockIndex(10);
+        assert_eq!(block.superblock(), Some(BlockIndex(4)));
+        assert_eq!(block.buddy(), Some(BlockIndex(9)));
+        assert_eq!(block.depth(), 3);
+        assert_eq!(block.offset(), 3);
 
-        let node = BlockIndex(11);
-        assert_eq!(node.superblock(), Some(BlockIndex(5)));
-        assert_eq!(node.buddy(), Some(BlockIndex(12)));
-        assert_eq!(node.depth(), 3);
-        assert_eq!(node.offset(), 4);
+        let block = BlockIndex(11);
+        assert_eq!(block.superblock(), Some(BlockIndex(5)));
+        assert_eq!(block.buddy(), Some(BlockIndex(12)));
+        assert_eq!(block.depth(), 3);
+        assert_eq!(block.offset(), 4);
 
-        let node = BlockIndex(12);
-        assert_eq!(node.superblock(), Some(BlockIndex(5)));
-        assert_eq!(node.buddy(), Some(BlockIndex(11)));
-        assert_eq!(node.depth(), 3);
-        assert_eq!(node.offset(), 5);
+        let block = BlockIndex(12);
+        assert_eq!(block.superblock(), Some(BlockIndex(5)));
+        assert_eq!(block.buddy(), Some(BlockIndex(11)));
+        assert_eq!(block.depth(), 3);
+        assert_eq!(block.offset(), 5);
 
-        let node = BlockIndex(13);
-        assert_eq!(node.superblock(), Some(BlockIndex(6)));
-        assert_eq!(node.buddy(), Some(BlockIndex(14)));
-        assert_eq!(node.depth(), 3);
-        assert_eq!(node.offset(), 6);
+        let block = BlockIndex(13);
+        assert_eq!(block.superblock(), Some(BlockIndex(6)));
+        assert_eq!(block.buddy(), Some(BlockIndex(14)));
+        assert_eq!(block.depth(), 3);
+        assert_eq!(block.offset(), 6);
 
-        let node = BlockIndex(14);
-        assert_eq!(node.superblock(), Some(BlockIndex(6)));
-        assert_eq!(node.buddy(), Some(BlockIndex(13)));
-        assert_eq!(node.depth(), 3);
-        assert_eq!(node.offset(), 7);
+        let block = BlockIndex(14);
+        assert_eq!(block.superblock(), Some(BlockIndex(6)));
+        assert_eq!(block.buddy(), Some(BlockIndex(13)));
+        assert_eq!(block.depth(), 3);
+        assert_eq!(block.offset(), 7);
     }
 }
