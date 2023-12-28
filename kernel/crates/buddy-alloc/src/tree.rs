@@ -29,14 +29,15 @@ pub enum Action<T> {
 }
 
 impl<'s> Tree<'s> {
-    /// Returns the number of bits required to store a tree with at least `block_count` blocks.
-    pub fn storage_bits_required(block_count: usize) -> usize {
-        assert!(block_count != 0, "tree must have at least 1 block");
+    /// Returns the number of bits required to store a tree with at least the specified number of
+    /// leaf blocks.
+    pub fn storage_bits_required(leaf_blocks: usize) -> usize {
+        assert!(leaf_blocks != 0, "tree must have at least 1 leaf block");
 
-        let leaf_count = block_count.next_power_of_two();
-        let innie_count = leaf_count - 1;
+        let leaf_blocks = leaf_blocks.next_power_of_two();
+        let nonleaf_blocks = leaf_blocks - 1;
 
-        innie_count * 2 + leaf_count * 2
+        nonleaf_blocks * 2 + leaf_blocks * 2
     }
 
     pub fn depth_required(block_count: usize) -> usize {
@@ -386,53 +387,53 @@ mod tests {
     #[test]
     fn storage_depth_required() {
         // size, in bits, of each type of block
-        const NON_LEAF: usize = 2;
+        const NONLEAF: usize = 2;
         const LEAF: usize = 2;
 
-        // 0 blocks: depth undefined
+        // 0 leaf blocks: depth undefined
         // -> should panic, no test
 
-        // 1 block: depth 0
+        // 1 leaf block: depth 0
         //        1
-        for block_count in [1] {
-            let depth = Tree::depth_required(block_count);
-            let bits = Tree::storage_bits_required(block_count);
-            assert_eq!(depth, 0, "block_count = {block_count}");
-            assert_eq!(bits, 1 * LEAF, "block_count = {block_count}");
+        for leaf_blocks in [1] {
+            let depth = Tree::depth_required(leaf_blocks);
+            let bits = Tree::storage_bits_required(leaf_blocks);
+            assert_eq!(depth, 0, "block_count = {leaf_blocks}");
+            assert_eq!(bits, 1 * LEAF, "block_count = {leaf_blocks}");
         }
 
-        // 2 blocks: depth 1
+        // 2 leaf blocks: depth 1
         //        2
         //    1       1
         //
-        for block_count in [2] {
-            let depth = Tree::depth_required(block_count);
-            let bits = Tree::storage_bits_required(block_count);
-            assert_eq!(depth, 1, "block_count = {block_count}");
-            assert_eq!(bits, 1 * NON_LEAF + 2 * LEAF, "block_count = {block_count}");
+        for leaf_blocks in [2] {
+            let depth = Tree::depth_required(leaf_blocks);
+            let bits = Tree::storage_bits_required(leaf_blocks);
+            assert_eq!(depth, 1, "block_count = {leaf_blocks}");
+            assert_eq!(bits, 1 * NONLEAF + 2 * LEAF, "block_count = {leaf_blocks}");
         }
 
-        // 3 to 4 blocks: depth 2
+        // 3 to 4 leaf blocks: depth 2
         //        2
         //    2       2
         //  1   1   1   1
-        for block_count in [3, 4] {
-            let depth = Tree::depth_required(block_count);
-            let bits = Tree::storage_bits_required(block_count);
-            assert_eq!(depth, 2, "block_count = {block_count}");
-            assert_eq!(bits, 3 * NON_LEAF + 4 * LEAF, "block_count = {block_count}");
+        for leaf_blocks in [3, 4] {
+            let depth = Tree::depth_required(leaf_blocks);
+            let bits = Tree::storage_bits_required(leaf_blocks);
+            assert_eq!(depth, 2, "block_count = {leaf_blocks}");
+            assert_eq!(bits, 3 * NONLEAF + 4 * LEAF, "block_count = {leaf_blocks}");
         }
 
-        // 5 to 8 blocks: depth 3
+        // 5 to 8 leaf blocks: depth 3
         //        2
         //    2       2
         //  2   2   2   2
         // 1 1 1 1 1 1 1 1
-        for block_count in [5, 6, 7, 8] {
-            let depth = Tree::depth_required(block_count);
-            let bits = Tree::storage_bits_required(block_count);
-            assert_eq!(depth, 3, "block_count = {block_count}");
-            assert_eq!(bits, 7 * NON_LEAF + 8 * LEAF, "block_count = {block_count}");
+        for leaf_blocks in [5, 6, 7, 8] {
+            let depth = Tree::depth_required(leaf_blocks);
+            let bits = Tree::storage_bits_required(leaf_blocks);
+            assert_eq!(depth, 3, "block_count = {leaf_blocks}");
+            assert_eq!(bits, 7 * NONLEAF + 8 * LEAF, "block_count = {leaf_blocks}");
         }
     }
 
