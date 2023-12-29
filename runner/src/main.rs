@@ -198,7 +198,13 @@ fn main() -> Result<()> {
         runner.exec(
             command::gdb(kernel.to_str().unwrap())
                 .arg("-ex")
-                .arg("target remote localhost:1234"),
+                .arg("target remote localhost:1234")
+                .arg("-ex")
+                .arg("set output-radix 16")
+                .arg("-ex")
+                .arg("set disassemble-next-line on")
+                .arg("-ex")
+                .arg("b *0x40408080"),
         )?;
 
         Ok(())

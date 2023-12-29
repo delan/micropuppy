@@ -12,57 +12,76 @@
 .globl _start
 _start:
     mov x0, #0x9000000
-    mov w1, #'u'
-    mov w2, #'p'
-    strb w1, [x0]               // “u”
-    strb w2, [x0]               // “p”
-    strb w1, [x0]               // “u”
-    strb w2, [x0]               // “p”
+    // mov w1, #'u'
+    // mov w2, #'p'
+    // strb w1, [x0]               // “u”
+    // strb w2, [x0]               // “p”
+    // strb w1, [x0]               // “u”
+    // strb w2, [x0]               // “p”
     mov w1, #'!'
     mov w2, #'\n'
 
-    // 0x40404xxx >>{27,18,9,0}&511 is (0,1,2,4)
-    ldr x5, =TTL0
-    msr TTBR1_EL1, x5
+    // set up an identity-mapped lowest 2GiB (1GiB below ram, 1GiB of
+    // ram), to avoid faulting when the mmu is enabled.
+    ldr x5, =TT0L0
+    msr TTBR0_EL1, x5
     strb w1, [x0]               // “!”
 
-    ldr x5, =TTL0
-    add x5, x5, #0x0            // (0)*8
-    ldr x6, =TTL1
+    // block 0GiB (0,0,x,x)+1GiB = 0GiB (0x0000'0000'0000'0000)
+    ldr x5, =TT0L0
+    add x5, x5, #0x0            // (0,,,)*8
+    ldr x6, =TT0L1
     orr x6, x6, 0b11            // table; valid
     str x6, [x5]
     strb w1, [x0]               // “!”
-
-    ldr x5, =TTL1
-    add x5, x5, #0x8            // (1)*8
-    /// ldr x6, =TTL2
-    /// orr x6, x6, 0b11            // table; valid
-    ldr x6, =VM_OA_START
+    ldr x5, =TT0L1
+    add x5, x5, #0x0            // (,0,,)*8
+    mov x6, #0x0000000000000000 // 0GiB
     orr x6, x6, 0b01            // block; valid
     str x6, [x5]
     strb w1, [x0]               // “!”
 
-    /// ldr x5, =TTL2
-    /// add x5, x5, #0x10           // (2)*8
-    /// ldr x6, =TTL3
-    /// orr x6, x6, 0b11            // table; valid
-    /// str x6, [x5]
-    /// strb w1, [x0]
-
-    /// ldr x5, =TTL3
-    /// add x5, x5, #0x20           // (4)*8
-    /// mov x6, #0x40404000
-    /// orr x6, x6, 0b11            // page; valid
-    /// str x6, [x5]
-    /// strb w1, [x0]
+    // block 1GiB (0,1,x,x)+1GiB = 1GiB (0x0000'0000'4000'0000)
+    ldr x5, =TT0L0
+    add x5, x5, #0x0            // (0,,,)*8
+    ldr x6, =TT0L1
+    orr x6, x6, 0b11            // table; valid
+    str x6, [x5]
+    strb w1, [x0]               // “!”
+    ldr x5, =TT0L1
+    add x5, x5, #0x8            // (,1,,)*8
+    mov x6, #0x0000000040000000 // 1GiB
+    orr x6, x6, 0b01            // block; valid
+    str x6, [x5]
+    strb w1, [x0]               // “!”
 
     mrs x5, SCTLR_EL1
     orr x5, x5, #1              // mmu enable
     msr SCTLR_EL1, x5
     // FIXME it dies here... predictably
     strb w1, [x0]               // “!”
-
     strb w2, [x0]               // “\n”
+
+    // 0x40404xxx >>{27,18,9,0}&511 is (0,1,2,4)
+    ldr x5, =TT1L0
+    msr TTBR1_EL1, x5
+    strb w1, [x0]               // “!”
+
+    ldr x5, =TT1L0
+    add x5, x5, #0x0            // (0)*8
+    ldr x6, =TT1L1
+    orr x6, x6, 0b11            // table; valid
+    str x6, [x5]
+    strb w1, [x0]               // “!”
+
+    ldr x5, =TT1L1
+    add x5, x5, #0x8            // (1)*8
+    /// ldr x6, =TT1L2
+    /// orr x6, x6, 0b11            // table; valid
+    ldr x6, =VM_OA_START
+    orr x6, x6, 0b01            // block; valid
+    str x6, [x5]
+    strb w1, [x0]               // “!”
 
     ldr x30, =VM_SP
     mov sp, x30

@@ -10,25 +10,45 @@ MEMORY
 }
 SECTIONS
 {
-    .data.ttl0 : {
-        TTL0 = .;
+    .data.tt0l0 : {
+        TT0L0 = .;
         . = . + 0x1000;
-        KEEP(*(.data.ttl0))
+        KEEP(*(.data.tt0l0))
     } >ram AT >ram
-    .data.ttl1 : {
-        TTL1 = .;
+    .data.tt0l1 : {
+        TT0L1 = .;
         . = . + 0x1000;
-        KEEP(*(.data.ttl1))
+        KEEP(*(.data.tt0l1))
     } >ram AT >ram
-    .data.ttl2 : {
-        TTL2 = .;
+    .data.tt0l2 : {
+        TT0L2 = .;
         . = . + 0x1000;
-        KEEP(*(.data.ttl2))
+        KEEP(*(.data.tt0l2))
     } >ram AT >ram
-    .data.ttl3 : {
-        TTL3 = .;
+    .data.tt0l3 : {
+        TT0L3 = .;
         . = . + 0x1000;
-        KEEP(*(.data.ttl3))
+        KEEP(*(.data.tt0l3))
+    } >ram AT >ram
+    .data.tt1l0 : {
+        TT1L0 = .;
+        . = . + 0x1000;
+        KEEP(*(.data.tt1l0))
+    } >ram AT >ram
+    .data.tt1l1 : {
+        TT1L1 = .;
+        . = . + 0x1000;
+        KEEP(*(.data.tt1l1))
+    } >ram AT >ram
+    .data.tt1l2 : {
+        TT1L2 = .;
+        . = . + 0x1000;
+        KEEP(*(.data.tt1l2))
+    } >ram AT >ram
+    .data.tt1l3 : {
+        TT1L3 = .;
+        . = . + 0x1000;
+        KEEP(*(.data.tt1l3))
     } >ram AT >ram
     .text.startup : { *(.text.startup) } >ram
 
