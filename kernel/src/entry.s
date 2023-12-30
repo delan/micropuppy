@@ -12,12 +12,12 @@
 .globl _start
 _start:
     mov x0, #0x9000000
-    // mov w1, #'u'
-    // mov w2, #'p'
-    // strb w1, [x0]               // “u”
-    // strb w2, [x0]               // “p”
-    // strb w1, [x0]               // “u”
-    // strb w2, [x0]               // “p”
+    mov w1, #'u'
+    mov w2, #'p'
+    strb w1, [x0]               // “u”
+    strb w2, [x0]               // “p”
+    strb w1, [x0]               // “u”
+    strb w2, [x0]               // “p”
     mov w1, #'!'
     mov w2, #'\n'
 
@@ -27,36 +27,38 @@ _start:
     msr TTBR0_EL1, x5
     strb w1, [x0]               // “!”
 
-    // block 0GiB (0,0,x,x)+1GiB = 0GiB (0x0000'0000'0000'0000)
+    // table 0GiB (0,x,x,x)+512GiB -> 0GiB (0x0000'0000'0000'0000)
     ldr x5, =TT0L0
     add x5, x5, #0x0            // (0,,,)*8
     ldr x6, =TT0L1
     orr x6, x6, 0b11            // table; valid
     str x6, [x5]
     strb w1, [x0]               // “!”
+
+    // block 0GiB (0,0,x,x)+1GiB -> 0GiB (0x0000'0000'0000'0000)
     ldr x5, =TT0L1
     add x5, x5, #0x0            // (,0,,)*8
-    mov x6, #0x0000000000000000 // 0GiB
-    mov x9, #(0b1 << 10) | (0b01 << 0) // block; access flag | valid
+    mov x6, #0x0000000000000000         // 0GiB
+    mov x9, #(0b1 << 10) | (0b01 << 0)  // access flag | block; valid
     orr x6, x6, x9
     str x6, [x5]
     strb w1, [x0]               // “!”
 
-    // block 1GiB (0,1,x,x)+1GiB = 1GiB (0x0000'0000'4000'0000)
-    ldr x5, =TT0L0
-    add x5, x5, #0x0            // (0,,,)*8
-    ldr x6, =TT0L1
-    orr x6, x6, 0b11            // table; valid
-    str x6, [x5]
-    strb w1, [x0]               // “!”
+    // block 1GiB (0,1,x,x)+1GiB -> 1GiB (0x0000'0000'4000'0000)
     ldr x5, =TT0L1
     add x5, x5, #0x8            // (,1,,)*8
-    mov x6, #0x0000000040000000 // 1GiB
-    mov x9, #(0b1 << 10) | (0b01 << 0) // block; access flag | valid
+    mov x6, #0x0000000040000000         // 1GiB
+    mov x9, #(0b1 << 10) | (0b01 << 0)  // access flag | block; valid
     orr x6, x6, x9
     str x6, [x5]
     strb w1, [x0]               // “!”
 
+    // need to barrier after writing to any translation tables (R[SPVBD]),
+    // or the new contents may not be observable by the mmu.
+    dsb sy
+
+    // need to set lower half region to 2^48, because values that are too small
+    // (that is, regions that are too big) may yield L0TF exceptions (R[SXWGM]).
     mrs x5, TCR_EL1
     orr x5, x5, #16
     msr TCR_EL1, x5
@@ -64,7 +66,6 @@ _start:
     mrs x5, SCTLR_EL1
     orr x5, x5, #1              // mmu enable
     msr SCTLR_EL1, x5
-    // FIXME it dies here... predictably
     strb w1, [x0]               // “!”
     strb w2, [x0]               // “\n”
 
