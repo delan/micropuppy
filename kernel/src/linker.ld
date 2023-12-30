@@ -18,6 +18,10 @@ SECTIONS
     } >ram AT >ram
     .text.startup : { *(.text.startup) } >ram
 
+    .dummy_vm_offset (NOLOAD) : {
+        . = . + SIZEOF(.data.tt) + SIZEOF(.text.startup);
+    } >vm
+
     /*
         the vector table is 16 entries of 0x80 bytes each; VBAR_ELn bits 10:0 are RES0, which
         mandates an 0x800 byte alignment of the vector table
