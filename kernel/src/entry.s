@@ -37,7 +37,8 @@ _start:
     ldr x5, =TT0L1
     add x5, x5, #0x0            // (,0,,)*8
     mov x6, #0x0000000000000000 // 0GiB
-    orr x6, x6, 0b01            // block; valid
+    mov x9, #(0b1 << 10) | (0b01 << 0) // block; access flag | valid
+    orr x6, x6, x9
     str x6, [x5]
     strb w1, [x0]               // “!”
 
@@ -51,9 +52,14 @@ _start:
     ldr x5, =TT0L1
     add x5, x5, #0x8            // (,1,,)*8
     mov x6, #0x0000000040000000 // 1GiB
-    orr x6, x6, 0b01            // block; valid
+    mov x9, #(0b1 << 10) | (0b01 << 0) // block; access flag | valid
+    orr x6, x6, x9
     str x6, [x5]
     strb w1, [x0]               // “!”
+
+    mrs x5, TCR_EL1
+    orr x5, x5, #16
+    msr TCR_EL1, x5
 
     mrs x5, SCTLR_EL1
     orr x5, x5, #1              // mmu enable
@@ -79,7 +85,8 @@ _start:
     /// ldr x6, =TT1L2
     /// orr x6, x6, 0b11            // table; valid
     ldr x6, =VM_OA_START
-    orr x6, x6, 0b01            // block; valid
+    mov x9, #(0b1 << 10) | (0b01 << 0) // block; access flag | valid
+    orr x6, x6, x9
     str x6, [x5]
     strb w1, [x0]               // “!”
 
