@@ -1,12 +1,6 @@
 .extern INITIAL_SP // defined in linker.ld
 .equ PSCI_SYSTEM_OFF, 0x84000008
 
-// FIXME this doesn’t seem to help get the right addresses
-.equ VM_IA_START, 0xFFFF000000000000
-.equ VM_OA_START, 0x40404000
-.equ VM_MAIN, kernel_main - VM_OA_START + VM_IA_START
-.equ VM_SP, INITIAL_SP - VM_OA_START + VM_IA_START
-
 .section ".text.startup"
 
 .globl _start
@@ -21,37 +15,40 @@ _start:
     mov w1, #'!'
     mov w2, #'\n'
 
-    // set up an identity-mapped lowest 2GiB (1GiB below ram, 1GiB of
-    // ram), to avoid faulting when the mmu is enabled.
-    ldr x5, =TT0L0
+    // set up an identity-mapped lowest 2GiB (1GiB below ram, 1GiB of ram),
+    // to avoid faulting when the mmu is enabled.
+    ldr x5, =TT_REAL_L0
     msr TTBR0_EL1, x5
     strb w1, [x0]               // “!”
 
-    // table 0GiB (0,x,x,x)+512GiB -> 0GiB (0x0000'0000'0000'0000)
-    ldr x5, =TT0L0
-    add x5, x5, #0x0            // (0,,,)*8
-    ldr x6, =TT0L1
-    orr x6, x6, 0b11            // table; valid
-    str x6, [x5]
+    // set up an identity-mapped lowest 2GiB in the higher half too,
+    // so we can have a higher-half kernel.
+    ldr x5, =TT_REAL_L0
+    msr TTBR1_EL1, x5
     strb w1, [x0]               // “!”
 
+    // table 0GiB (0,x,x,x)+512GiB -> 0GiB (0x0000'0000'0000'0000)
+    ldr x5, =TT_REAL_L0
+    add x5, x5, #0x0            // (0,,,)*8
+    ldr x6, =TT_REAL_L1
+    orr x6, x6, 0b11            // table; valid
+    str x6, [x5]
+
     // block 0GiB (0,0,x,x)+1GiB -> 0GiB (0x0000'0000'0000'0000)
-    ldr x5, =TT0L1
+    ldr x5, =TT_REAL_L1
     add x5, x5, #0x0            // (,0,,)*8
     mov x6, #0x0000000000000000         // 0GiB
     mov x9, #(0b1 << 10) | (0b01 << 0)  // access flag | block; valid
     orr x6, x6, x9
     str x6, [x5]
-    strb w1, [x0]               // “!”
 
     // block 1GiB (0,1,x,x)+1GiB -> 1GiB (0x0000'0000'4000'0000)
-    ldr x5, =TT0L1
+    ldr x5, =TT_REAL_L1
     add x5, x5, #0x8            // (,1,,)*8
     mov x6, #0x0000000040000000         // 1GiB
     mov x9, #(0b1 << 10) | (0b01 << 0)  // access flag | block; valid
     orr x6, x6, x9
     str x6, [x5]
-    strb w1, [x0]               // “!”
 
     // need to barrier after writing to any translation tables (R[SPVBD]),
     // or the new contents may not be observable by the mmu.
@@ -62,6 +59,7 @@ _start:
     mrs x5, TCR_EL1
     orr x5, x5, #16
     msr TCR_EL1, x5
+    strb w1, [x0]               // “!”
 
     mrs x5, SCTLR_EL1
     orr x5, x5, #1              // mmu enable
@@ -69,31 +67,9 @@ _start:
     strb w1, [x0]               // “!”
     strb w2, [x0]               // “\n”
 
-    // 0x40404xxx >>{27,18,9,0}&511 is (0,1,2,4)
-    ldr x5, =TT1L0
-    msr TTBR1_EL1, x5
-    strb w1, [x0]               // “!”
-
-    ldr x5, =TT1L0
-    add x5, x5, #0x0            // (0)*8
-    ldr x6, =TT1L1
-    orr x6, x6, 0b11            // table; valid
-    str x6, [x5]
-    strb w1, [x0]               // “!”
-
-    ldr x5, =TT1L1
-    add x5, x5, #0x8            // (1)*8
-    /// ldr x6, =TT1L2
-    /// orr x6, x6, 0b11            // table; valid
-    ldr x6, =VM_OA_START
-    mov x9, #(0b1 << 10) | (0b01 << 0) // block; access flag | valid
-    orr x6, x6, x9
-    str x6, [x5]
-    strb w1, [x0]               // “!”
-
-    ldr x30, =VM_SP
+    ldr x30, =INITIAL_SP
     mov sp, x30
-    bl VM_MAIN
+    bl kernel_main
 
     ldr x0, =PSCI_SYSTEM_OFF
     hvc #0

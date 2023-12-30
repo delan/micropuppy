@@ -4,51 +4,17 @@ MEMORY
     /* 4MiB from the start of RAM - space required at start of RAM for FDT */
     ram (a) : ORIGIN = 0x40400000, LENGTH = 0x4000000
 
-    /* virtual memory, with kernel at VA[55]=1, starting at 2^55 */
-    /* vm (a) : ORIGIN = 0x80000000000000, LENGTH = 0x4000000 */
-    vm (a) : ORIGIN =  0xFFFF000000000000, LENGTH = 0x4000000
+    /* virtual memory, with kernel at VA[55]=1 (0xFFFF...), identity mapped */
+    vm (a) : ORIGIN = 0xFFFF000040400000, LENGTH = 0x4000000
 }
 SECTIONS
 {
-    .data.tt0l0 : {
-        TT0L0 = .;
+    .data.tt : {
+        TT_REAL_L0 = .;
+        . = . + 0x1000;
+        TT_REAL_L1 = .;
         . = . + 0x1000;
         KEEP(*(.data.tt0l0))
-    } >ram AT >ram
-    .data.tt0l1 : {
-        TT0L1 = .;
-        . = . + 0x1000;
-        KEEP(*(.data.tt0l1))
-    } >ram AT >ram
-    .data.tt0l2 : {
-        TT0L2 = .;
-        . = . + 0x1000;
-        KEEP(*(.data.tt0l2))
-    } >ram AT >ram
-    .data.tt0l3 : {
-        TT0L3 = .;
-        . = . + 0x1000;
-        KEEP(*(.data.tt0l3))
-    } >ram AT >ram
-    .data.tt1l0 : {
-        TT1L0 = .;
-        . = . + 0x1000;
-        KEEP(*(.data.tt1l0))
-    } >ram AT >ram
-    .data.tt1l1 : {
-        TT1L1 = .;
-        . = . + 0x1000;
-        KEEP(*(.data.tt1l1))
-    } >ram AT >ram
-    .data.tt1l2 : {
-        TT1L2 = .;
-        . = . + 0x1000;
-        KEEP(*(.data.tt1l2))
-    } >ram AT >ram
-    .data.tt1l3 : {
-        TT1L3 = .;
-        . = . + 0x1000;
-        KEEP(*(.data.tt1l3))
     } >ram AT >ram
     .text.startup : { *(.text.startup) } >ram
 
