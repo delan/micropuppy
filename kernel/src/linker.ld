@@ -14,7 +14,7 @@ SECTIONS
         . = . + 0x1000;
         TT_REAL_L1 = .;
         . = . + 0x1000;
-        KEEP(*(.data.tt0l0))
+        KEEP(*(.data.tt))
     } >ram AT >ram
     .text.startup : { *(.text.startup) } >ram
 

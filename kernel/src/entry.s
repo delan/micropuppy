@@ -54,10 +54,10 @@ _start:
     // or the new contents may not be observable by the mmu.
     dsb sy
 
-    // need to set lower half region to 2^48, because values that are too small
+    // need to set both half regions to 2^48, because values that are too small
     // (that is, regions that are too big) may yield L0TF exceptions (R[SXWGM]).
     mrs x5, TCR_EL1
-    orr x5, x5, #16
+    ldr x5, =((16 << 16) | (16 << 0))   // T1SZ = 16, T0SZ = 16
     msr TCR_EL1, x5
     strb w1, [x0]               // “!”
 
