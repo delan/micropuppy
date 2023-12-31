@@ -15,7 +15,9 @@ class InfoTtCommand(gdb.Command):
     with an ellipsis.
 
     Legend:
-        🧱: block descriptor 📖: page descriptor 🧾: table descriptor
+        🧱: block descriptor
+        📖: page descriptor
+        🧾: table descriptor
     """
 
     def __init__(self):
