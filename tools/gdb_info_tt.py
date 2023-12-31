@@ -15,9 +15,9 @@ class InfoTtCommand(gdb.Command):
     with an ellipsis.
 
     Legend:
+        📖: table descriptor
         🧱: block descriptor
-        📖: page descriptor
-        🧾: table descriptor
+        🧾: page descriptor
     """
 
     def __init__(self):
@@ -147,7 +147,7 @@ class PageDescriptor:
         return PageDescriptor(output_address)
 
     def __str__(self):
-        return f"📖 {pretty_hex(self.output_address)}"
+        return f"🧾 {pretty_hex(self.output_address)}"
 
 
 @dataclass
@@ -163,7 +163,7 @@ class TableDescriptor:
         return TableDescriptor(table_address)
 
     def __str__(self):
-        return f"🧾 {pretty_hex(self.table_address)}"
+        return f"📖 {pretty_hex(self.table_address)}"
 
 
 def pretty_hex(value, *, width=64):
