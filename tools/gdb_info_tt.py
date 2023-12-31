@@ -28,27 +28,38 @@ class InfoTtCommand(gdb.Command):
         argument = gdb.string_to_argv(argument)
 
         if len(argument) == 0:
-            address = gdb.parse_and_eval("$TTBR0_EL1")
+            address = "$TTBR0_EL1"
             level = 0
         elif len(argument) == 1:
             raise RuntimeError("missing level argument")
         elif len(argument) == 2:
-            address = gdb.parse_and_eval(argument[0])
+            address = argument[0]
             level = gdb.parse_and_eval(argument[1])
         else:
             raise RuntimeError("too many arguments")
 
-        print(table_str_from_inferior(inferior, int(address), int(level)))
+        # TODO be smarter than this, or maybe even be dumber (always 0xFFFF...)?
+        starting_va = 0xFFFF_FFFF_FFFF_FFFF if address == "$TTBR1_EL1" else 0
+        address = gdb.parse_and_eval(address)
+        print(table_str_from_inferior(inferior, int(address), int(level), starting_va))
 
 
-def table_str_from_inferior(inferior, address, level):
-    TABLE_LEN = 512
-    TABLE_SIZE = Descriptor.SIZE * TABLE_LEN
+def table_str_from_inferior(inferior, address, level, starting_va):
+    VA_BITS = 48
+    LEVELS = 4
+    PAGE_SIZE_EXP = 12
+    EACH_LEVEL_BITS = PAGE_SIZE_EXP - Descriptor.SIZE_EXP
+    TABLE_LEN = 2 ** EACH_LEVEL_BITS
+    TABLE_SIZE = TABLE_LEN * Descriptor.SIZE
+    assert TABLE_SIZE == 2 ** PAGE_SIZE_EXP
 
     visited = set()
 
-    def table_str_from_inferior(inferior, address, level):
+    def table_str_from_inferior(inferior, address, level, starting_va):
         heading = f"{TableDescriptor(address)} [level {level}]"
+        index_width = 0
+        starting_vas = [starting_va]
+        entries = []
 
         if address not in visited:
             visited.add(address)
@@ -67,16 +78,22 @@ def table_str_from_inferior(inferior, address, level):
 
             max_index = len(descriptors) - 1
             index_width = len(str(max_index))
-            entries = []
             i = 0
             while i < len(descriptors):
                 descriptor = descriptors[i]
                 entry = f"[{i:<{index_width}}]"
+                index_shift = PAGE_SIZE_EXP + EACH_LEVEL_BITS * (LEVELS - level)
+                clear_shift = index_shift + EACH_LEVEL_BITS
+                starting_va &= ~((1 << min(VA_BITS, clear_shift)) - 1)
+                starting_va |= i << min(VA_BITS, index_shift)
+                starting_vas.append(starting_va)
                 i += 1
                 if isinstance(descriptor, TableDescriptor):
-                    content = table_str_from_inferior(
-                        inferior, descriptor.table_address, level + 1
+                    entry_starting_vas, content = table_str_from_inferior(
+                        inferior, descriptor.table_address, level + 1, starting_va
                     )
+                    starting_vas.pop()
+                    starting_vas.extend(entry_starting_vas)
                     entry += f": {content}"
                 elif descriptor is not None:
                     # BlockDescriptor or PageDescriptor
@@ -92,17 +109,19 @@ def table_str_from_inferior(inferior, address, level):
                 entries.append(entry)
         else:
             heading += " (dup)"
-            index_width = 0
-            entries = []
 
-        return pretty_tree(heading, entries, index_width)
+        return (starting_vas, pretty_tree(heading, entries, index_width))
 
-    return table_str_from_inferior(inferior, address, level)
+    starting_vas, result = table_str_from_inferior(inferior, address, level, starting_va)
+    lines = result.splitlines()
+    assert len(starting_vas) == len(lines), f"starting_vas != lines ({len(starting_vas)} != {len(lines)})"
+    return "\n".join(f"{pretty_hex(va)} {line}" for va, line in zip(starting_vas, lines))
 
 
 @dataclass
 class Descriptor:
-    SIZE = 8
+    SIZE_EXP = 3
+    SIZE = 2 ** SIZE_EXP
     descriptor: bytes
 
     @staticmethod
