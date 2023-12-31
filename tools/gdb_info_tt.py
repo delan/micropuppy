@@ -65,21 +65,37 @@ def table_str_from_inferior(inferior, address, level):
                 for i in range(TABLE_LEN)
             ]
 
+            max_index = len(descriptors) - 1
+            index_width = len(str(max_index))
             entries = []
-            for descriptor in descriptors:
+            i = 0
+            while i < len(descriptors):
+                descriptor = descriptors[i]
+                entry = f"[{i:<{index_width}}]"
+                i += 1
                 if isinstance(descriptor, TableDescriptor):
-                    entry = table_str_from_inferior(
+                    content = table_str_from_inferior(
                         inferior, descriptor.table_address, level + 1
                     )
+                    entry += f": {content}"
+                elif descriptor is not None:
+                    # BlockDescriptor or PageDescriptor
+                    entry += f": {str(descriptor)}"
                 else:
-                    entry = str(descriptor)
+                    next_index = i
+                    while i < len(descriptors) and descriptors[i] is None:
+                        i += 1
+                    if i > next_index:
+                        entry += f"-[{(i-1):<{index_width}}]"
+                    entry += ": 😶 <none>"
 
                 entries.append(entry)
         else:
-            heading += " ..."
+            heading += " (dup)"
+            index_width = 0
             entries = []
 
-        return pretty_tree(heading, entries)
+        return pretty_tree(heading, entries, index_width)
 
     return table_str_from_inferior(inferior, address, level)
 
@@ -180,13 +196,12 @@ def pretty_hex(value, *, width=64):
         return f"0x{offcut}_{nibbles}"
 
 
-def pretty_tree(heading, entries):
+def pretty_tree(heading, entries, index_width):
     BOX_NS = "\u2502"
     BOX_NE = "\u2514"
     BOX_NSE = "\u251c"
 
     max_index = len(entries) - 1
-    index_width = len(str(max_index))
 
     def format_entry(index, entry):
         prefixes = []
@@ -198,7 +213,7 @@ def pretty_tree(heading, entries):
             box_first = BOX_NE
         else:
             box_first = BOX_NSE
-        prefix_first = f"{box_first} [{index:<{index_width}}]:"
+        prefix_first = f"{box_first} "  # index provided by caller
         prefixes.append(prefix_first)
 
         # prefix for lines between the first and last line
