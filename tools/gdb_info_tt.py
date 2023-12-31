@@ -80,7 +80,7 @@ def table_str_from_inferior(inferior, address, level):
                     entry += f": {content}"
                 elif descriptor is not None:
                     # BlockDescriptor or PageDescriptor
-                    entry += f": {str(descriptor)}"
+                    entry += f": {descriptor}"
                 else:
                     next_index = i
                     while i < len(descriptors) and descriptors[i] is None:
