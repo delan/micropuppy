@@ -99,6 +99,10 @@ def table_str_from_inferior(inferior, address, level, starting_va):
     TABLE_SIZE = TABLE_LEN * Descriptor.SIZE
     assert TABLE_SIZE == 2 ** PAGE_SIZE_EXP
 
+    # current effective values
+    assert EACH_LEVEL_BITS == 9
+    assert TABLE_LEN == 512
+
     visited = set()
 
     def table_str_from_inferior(inferior, address, level, starting_va):
@@ -128,11 +132,16 @@ def table_str_from_inferior(inferior, address, level, starting_va):
             while i < len(descriptors):
                 descriptor = descriptors[i]
                 entry = f"[{i:<{index_width}}]"
-                index_shift = PAGE_SIZE_EXP + EACH_LEVEL_BITS * (LEVELS - level)
-                clear_shift = index_shift + EACH_LEVEL_BITS
+
+                # FIXME unsure if min(VA_BITS) is the right way to deal with smaller T0SZ/T1SZ,
+                # so for now let’s assert that we haven’t changed VA_BITS
+                clear_shift = PAGE_SIZE_EXP + EACH_LEVEL_BITS * (LEVELS - level)
+                index_shift = clear_shift - EACH_LEVEL_BITS
+                assert clear_shift <= VA_BITS
                 starting_va &= ~((1 << min(VA_BITS, clear_shift)) - 1)
                 starting_va |= i << min(VA_BITS, index_shift)
                 starting_vas.append(starting_va)
+
                 i += 1
                 if isinstance(descriptor, TableDescriptor):
                     entry_starting_vas, content = table_str_from_inferior(
