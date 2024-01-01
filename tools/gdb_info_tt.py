@@ -38,6 +38,52 @@ class InfoTtCommand(gdb.Command):
         else:
             raise RuntimeError("too many arguments")
 
+        info_tt(inferior, address, level)
+
+
+class InfoTtAlias(gdb.Command):
+    def __init__(self, name, address):
+        super().__init__(f"info {name}", gdb.COMMAND_STATUS)
+        self.address = address
+
+    def invoke(self, argument, from_tty):
+        inferior = gdb.inferiors()[0]
+        argument = gdb.string_to_argv(argument)
+
+        address = self.address
+        if len(argument) == 0:
+            level = 0
+        elif len(argument) == 1:
+            level = gdb.parse_and_eval(argument[0])
+        else:
+            raise RuntimeError("too many arguments")
+
+        info_tt(inferior, address, level)
+
+
+class InfoTt0(InfoTtAlias):
+    """Print translation table for $TTBR0_EL1.
+    info tt0 [level]
+
+    Same as “info tt $TTBR0_EL1”.
+    """
+
+    def __init__(self):
+        super().__init__("tt0", "$TTBR0_EL1")
+
+
+class InfoTt1(InfoTtAlias):
+    """Print translation table for $TTBR1_EL1.
+    info tt1 [level]
+
+    Same as “info tt $TTBR1_EL1”.
+    """
+
+    def __init__(self):
+        super().__init__("tt1", "$TTBR1_EL1")
+
+
+def info_tt(inferior, address, level):
         # TODO be smarter than this, or maybe even be dumber (always 0xFFFF...)?
         starting_va = 0xFFFF_FFFF_FFFF_FFFF if address == "$TTBR1_EL1" else 0
         address = gdb.parse_and_eval(address)
@@ -260,3 +306,5 @@ def pretty_tree(heading, entries, index_width):
 
 
 InfoTtCommand()
+InfoTt0()
+InfoTt1()
