@@ -26,7 +26,7 @@ SECTIONS
         the vector table is 16 entries of 0x80 bytes each; VBAR_ELn bits 10:0 are RES0, which
         mandates an 0x800 byte alignment of the vector table
     */
-    .text.vectors ALIGN(0x800) : {
+    .text.vectors : ALIGN(0x800) {
         VECTORS = .;
         /*
             KEEP is required as no symbols inside the section are directly referenced and thus
