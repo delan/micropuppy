@@ -113,7 +113,7 @@ def table_str_from_inferior(inferior, address, level, starting_va):
             try:
                 descriptors = inferior.read_memory(address, TABLE_SIZE).tobytes()
             except Exception as e:
-                return f"<could not read table at {pretty_hex(address)}: {e}>"
+                raise Exception(f"could not read table at {pretty_hex(address)}: {e}")
 
             descriptors = [
                 Descriptor.from_bytes(
