@@ -106,9 +106,16 @@ def table_str_from_inferior(inferior, address, level, starting_va):
     visited = set()
 
     def table_str_from_inferior(inferior, address, level, starting_va):
+        # FIXME unsure if min(VA_BITS) is the right way to deal with smaller
+        # T0SZ/T1SZ, so for now let’s assert that we haven’t changed VA_BITS
+        clear_shift = PAGE_SIZE_EXP + EACH_LEVEL_BITS * (LEVELS - level)
+        index_shift = clear_shift - EACH_LEVEL_BITS
+        assert clear_shift <= VA_BITS
+        starting_va &= ~((1 << min(VA_BITS, clear_shift)) - 1)
+        starting_vas = [starting_va]
+
         heading = f"{TableDescriptor(address)} [level {level}]"
         index_width = 0
-        starting_vas = [starting_va]
         entries = []
 
         if address not in visited:
@@ -133,11 +140,6 @@ def table_str_from_inferior(inferior, address, level, starting_va):
                 descriptor = descriptors[i]
                 entry = f"[{i:<{index_width}}]"
 
-                # FIXME unsure if min(VA_BITS) is the right way to deal with smaller T0SZ/T1SZ,
-                # so for now let’s assert that we haven’t changed VA_BITS
-                clear_shift = PAGE_SIZE_EXP + EACH_LEVEL_BITS * (LEVELS - level)
-                index_shift = clear_shift - EACH_LEVEL_BITS
-                assert clear_shift <= VA_BITS
                 starting_va &= ~((1 << min(VA_BITS, clear_shift)) - 1)
                 starting_va |= i << min(VA_BITS, index_shift)
                 starting_vas.append(starting_va)
