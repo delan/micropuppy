@@ -28,8 +28,8 @@ SECTIONS {
         mandates an 0x800 byte alignment of the vector table
     */
     .vectors : ALIGN(4K) {
-        _vectors_va = .;
-        _vectors_pa = LOADADDR(.vectors);
+        _kernel_va = .;
+        _kernel_pa = LOADADDR(.vectors);
         /*
             KEEP is required as no symbols inside the section are directly referenced and thus
             --gc-sections yeets the entire vector table
@@ -66,6 +66,8 @@ SECTIONS {
         TASK2_KERNEL_INITIAL_SP = .;
     } >kernel AT >ram
     BUDDY_ALLOC_TREE = .;
+
+    _ekernel_va = .;
 
     /* Debugging: DWARF */
     .debug_abbrev : { *(.debug_abbrev) }

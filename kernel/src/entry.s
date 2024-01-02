@@ -47,58 +47,45 @@ _start:
     //   level  2: IA[29:21] (9-bit)
     //   level  3: IA[20:12] (9-bit)
 
-    // upper VA range, level 0 (index 0)
+    // === populate levels 0 to 2 ===
+    // level 0: D_Table pointing to level 1
     ldr x0, =tt_upper_level0
-    msr TTBR1_EL1, x0
-    ldr x1, =_vectors_va
-    ubfx x1, x1, #39, #9
+    ldr x1, =_kernel_va
     ldr x2, =tt_upper_level1
-    orr x2, x2, #0b11 // D_Table
-    str x2, [x0, x1, lsl #3]
+    ubfx x3, x1, #39, #9 // IA[47:39]
+    orr x4, x2, #0b11 // D_Table
+    str x4, [x0, x3, lsl #3]
 
-    // upper VA range, level 1 (index 0)
-    ldr x0, =tt_upper_level1
-    ldr x1, =_vectors_va
-    ubfx x1, x1, #30, #9
+    msr TTBR1_EL1, x0
+
+    // level 1: D_Table pointing to level 2
+    mov x0, x2
     ldr x2, =tt_upper_level2
-    orr x2, x2, #0b11 // D_Table
-    str x2, [x0, x1, lsl #3]
+    ubfx x3, x1, #30, #9 // IA[38:30]
+    orr x4, x2, #0b11 // D_Table
+    str x4, [x0, x3, lsl #3]
 
-    // upper VA range, level 2 (index 0)
-    ldr x0, =tt_upper_level2
-    ldr x1, =_vectors_va
-    ubfx x1, x1, #21, #9
+    // level 2: D_Table pointing to level 3
+    mov x0, x2
     ldr x2, =tt_upper_level3
-    orr x2, x2, #0b11 // D_Table
-    str x2, [x0, x1, lsl #3]
+    ubfx x3, x1, #21, #9 // IA[29:21]
+    orr x4, x2, #0b11 // D_Table
+    str x4, [x0, x3, lsl #3]
 
-    // upper VA range, level 3 (index 0)
-    ldr x0, =tt_upper_level3
-    ldr x1, =_vectors_va
-    ubfx x1, x1, #12, #9
-    ldr x2, =_vectors_pa
-    mov x3, #(1 << 10) | 0b11 // AF | D_Page
-    orr x2, x2, x3
-    str x2, [x0, x1, lsl #3]
+    // === populate level 3 ===
+    mov x0, x2
+    ldr x2, =_kernel_pa
+    ldr x5, =_ekernel_va
+    mov x6, #(1 << 10) | 0b11 // AF | D_Page
+.populate_level3:
+    ubfx x3, x1, #12, #9 // IA[20:12]
+    orr x4, x2, x6
+    str x4, [x0, x3, lsl #3]
 
-    // upper VA range, level 3 (index 1)
-    ldr x0, =tt_upper_level3
-    ldr x1, =_vectors_va
     add x1, x1, #0x1000
-    ubfx x1, x1, #12, #9
-    ldr x2, =_vectors_pa
     add x2, x2, #0x1000
-    mov x3, #(1 << 10) | 0b11 // AF | D_Page
-    orr x2, x2, x3
-    str x2, [x0, x1, lsl #3]
-
-    // upper VA range, level 1 (index 1)
-    //ldr x0, =tt_upper_level1
-    //mov x1, #1 // index (TODO: use ubfx and VA)
-    //mov x2, #0x0000000040000000 // TODO: use VA
-    //mov x3, #(0b1 << 10) | (0b01 << 0) // AF | D_Block
-    //orr x2, x2, x3
-    //str x2, [x0, x1, lsl #3]
+    cmp x1, x5
+    blt .populate_level3
 
     // need to barrier after writing to any translation tables (R[SPVBD]),
     // or the new contents may not be observable by the mmu.
