@@ -84,10 +84,10 @@ class InfoTt1(InfoTtAlias):
 
 
 def info_tt(inferior, address, level):
-        # TODO be smarter than this, or maybe even be dumber (always 0xFFFF...)?
-        starting_va = 0xFFFF_FFFF_FFFF_FFFF if address == "$TTBR1_EL1" else 0
-        address = gdb.parse_and_eval(address)
-        print(table_str_from_inferior(inferior, int(address), int(level), starting_va))
+    # TODO be smarter than this, or maybe even be dumber (always 0xFFFF...)?
+    starting_va = 0xFFFF_FFFF_FFFF_FFFF if address == "$TTBR1_EL1" else 0
+    address = gdb.parse_and_eval(address)
+    print(table_str_from_inferior(inferior, int(address), int(level), starting_va))
 
 
 def table_str_from_inferior(inferior, address, level, starting_va):
@@ -95,9 +95,9 @@ def table_str_from_inferior(inferior, address, level, starting_va):
     LEVELS = 4
     PAGE_SIZE_EXP = 12
     EACH_LEVEL_BITS = PAGE_SIZE_EXP - Descriptor.SIZE_EXP
-    TABLE_LEN = 2 ** EACH_LEVEL_BITS
+    TABLE_LEN = 2**EACH_LEVEL_BITS
     TABLE_SIZE = TABLE_LEN * Descriptor.SIZE
-    assert TABLE_SIZE == 2 ** PAGE_SIZE_EXP
+    assert TABLE_SIZE == 2**PAGE_SIZE_EXP
 
     # current effective values
     assert EACH_LEVEL_BITS == 9
@@ -169,16 +169,22 @@ def table_str_from_inferior(inferior, address, level, starting_va):
 
         return (starting_vas, pretty_tree(heading, entries, index_width))
 
-    starting_vas, result = table_str_from_inferior(inferior, address, level, starting_va)
+    starting_vas, result = table_str_from_inferior(
+        inferior, address, level, starting_va
+    )
     lines = result.splitlines()
-    assert len(starting_vas) == len(lines), f"starting_vas != lines ({len(starting_vas)} != {len(lines)})"
-    return "\n".join(f"{pretty_hex(va)} {line}" for va, line in zip(starting_vas, lines))
+    assert len(starting_vas) == len(
+        lines
+    ), f"starting_vas != lines ({len(starting_vas)} != {len(lines)})"
+    return "\n".join(
+        f"{pretty_hex(va)} {line}" for va, line in zip(starting_vas, lines)
+    )
 
 
 @dataclass
 class Descriptor:
     SIZE_EXP = 3
-    SIZE = 2 ** SIZE_EXP
+    SIZE = 2**SIZE_EXP
     descriptor: bytes
 
     @staticmethod
@@ -193,7 +199,7 @@ class Descriptor:
         elif not self.bit(1):
             return BlockDescriptor.from_descriptor(self, level)
         elif level == 3:
-            return PageDescriptor.from_descriptor(self)
+            return PageDescriptor.from_descriptor(self, level)
         else:
             return TableDescriptor.from_descriptor(self)
 

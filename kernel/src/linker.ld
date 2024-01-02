@@ -21,13 +21,13 @@ SECTIONS {
         *(.start*)
     } >ram
 
-    . = ALIGN(4K);
+    /* . = ALIGN(4K); */
 
     /*
         the vector table is 16 entries of 0x80 bytes each; VBAR_ELn bits 10:0 are RES0, which
         mandates an 0x800 byte alignment of the vector table
     */
-    .vectors : ALIGN(0x800) {
+    .vectors : ALIGN(4K) {
         _vectors_va = .;
         _vectors_pa = LOADADDR(.vectors);
         /*
