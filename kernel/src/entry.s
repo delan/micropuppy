@@ -21,12 +21,6 @@ _start:
     msr TTBR0_EL1, x5
     strb w1, [x0]               // “!”
 
-    // set up an identity-mapped lowest 2GiB in the higher half too,
-    // so we can have a higher-half kernel.
-    ldr x5, =tt_lower_level0
-    msr TTBR1_EL1, x5
-    strb w1, [x0]               // “!”
-
     // table 0GiB (0,x,x,x)+512GiB -> 0GiB (0x0000'0000'0000'0000)
     ldr x5, =tt_lower_level0
     add x5, x5, #0x0            // (0,,,)*8
@@ -44,6 +38,34 @@ _start:
 
     // block 1GiB (0,1,x,x)+1GiB -> 1GiB (0x0000'0000'4000'0000)
     ldr x5, =tt_lower_level1
+    add x5, x5, #0x8            // (,1,,)*8
+    mov x6, #0x0000000040000000         // 1GiB
+    mov x9, #(0b1 << 10) | (0b01 << 0)  // access flag | block; valid
+    orr x6, x6, x9
+    str x6, [x5]
+
+    // kernel side
+    ldr x5, =tt_upper_level0
+    msr TTBR1_EL1, x5
+    strb w1, [x0]               // “!”
+
+    // table 0GiB (0,x,x,x)+512GiB -> 0GiB (0x0000'0000'0000'0000)
+    ldr x5, =tt_upper_level0
+    add x5, x5, #0x0            // (0,,,)*8
+    ldr x6, =tt_upper_level1
+    orr x6, x6, 0b11            // table; valid
+    str x6, [x5]
+
+    // block 0GiB (0,0,x,x)+1GiB -> 0GiB (0x0000'0000'0000'0000)
+    ldr x5, =tt_upper_level1
+    add x5, x5, #0x0            // (,0,,)*8
+    mov x6, #0x0000000000000000         // 0GiB
+    mov x9, #(0b1 << 10) | (0b01 << 0)  // access flag | block; valid
+    orr x6, x6, x9
+    str x6, [x5]
+
+    // block 1GiB (0,1,x,x)+1GiB -> 1GiB (0x0000'0000'4000'0000)
+    ldr x5, =tt_upper_level1
     add x5, x5, #0x8            // (,1,,)*8
     mov x6, #0x0000000040000000         // 1GiB
     mov x9, #(0b1 << 10) | (0b01 << 0)  // access flag | block; valid
@@ -77,9 +99,14 @@ _start:
 .align 12
 tt_lower_level0:
     .fill 512, 8, 0
-
 .align 12
 tt_lower_level1:
+    .fill 512, 8, 0
+.align 12
+tt_upper_level0:
+    .fill 512, 8, 0
+.align 12
+tt_upper_level1:
     .fill 512, 8, 0
 
 .section ".vectors", "ax"
