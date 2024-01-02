@@ -1,7 +1,7 @@
 .extern INITIAL_SP // defined in linker.ld
 .equ PSCI_SYSTEM_OFF, 0x84000008
 
-.section ".text.startup"
+.section ".start", "ax"
 
 .globl _start
 _start:
@@ -17,25 +17,25 @@ _start:
 
     // set up an identity-mapped lowest 2GiB (1GiB below ram, 1GiB of ram),
     // to avoid faulting when the mmu is enabled.
-    ldr x5, =TT_REAL_L0
+    ldr x5, =tt_lower_level0
     msr TTBR0_EL1, x5
     strb w1, [x0]               // “!”
 
     // set up an identity-mapped lowest 2GiB in the higher half too,
     // so we can have a higher-half kernel.
-    ldr x5, =TT_REAL_L0
+    ldr x5, =tt_lower_level0
     msr TTBR1_EL1, x5
     strb w1, [x0]               // “!”
 
     // table 0GiB (0,x,x,x)+512GiB -> 0GiB (0x0000'0000'0000'0000)
-    ldr x5, =TT_REAL_L0
+    ldr x5, =tt_lower_level0
     add x5, x5, #0x0            // (0,,,)*8
-    ldr x6, =TT_REAL_L1
+    ldr x6, =tt_lower_level1
     orr x6, x6, 0b11            // table; valid
     str x6, [x5]
 
     // block 0GiB (0,0,x,x)+1GiB -> 0GiB (0x0000'0000'0000'0000)
-    ldr x5, =TT_REAL_L1
+    ldr x5, =tt_lower_level1
     add x5, x5, #0x0            // (,0,,)*8
     mov x6, #0x0000000000000000         // 0GiB
     mov x9, #(0b1 << 10) | (0b01 << 0)  // access flag | block; valid
@@ -43,7 +43,7 @@ _start:
     str x6, [x5]
 
     // block 1GiB (0,1,x,x)+1GiB -> 1GiB (0x0000'0000'4000'0000)
-    ldr x5, =TT_REAL_L1
+    ldr x5, =tt_lower_level1
     add x5, x5, #0x8            // (,1,,)*8
     mov x6, #0x0000000040000000         // 1GiB
     mov x9, #(0b1 << 10) | (0b01 << 0)  // access flag | block; valid
@@ -67,14 +67,22 @@ _start:
     strb w1, [x0]               // “!”
     strb w2, [x0]               // “\n”
 
-    ldr x30, =INITIAL_SP
+    ldr x30, =_estack_va
     mov sp, x30
     bl kernel_main
 
     ldr x0, =PSCI_SYSTEM_OFF
     hvc #0
 
-.section ".text.vectors"
+.align 12
+tt_lower_level0:
+    .fill 512, 8, 0
+
+.align 12
+tt_lower_level1:
+    .fill 512, 8, 0
+
+.section ".vectors", "ax"
 
 .macro define_vector_trampoline, addr:req, source:req, type:req
     .org \addr
