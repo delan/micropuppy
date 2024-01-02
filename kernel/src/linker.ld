@@ -28,6 +28,8 @@ SECTIONS {
         mandates an 0x800 byte alignment of the vector table
     */
     .vectors : ALIGN(0x800) {
+        _vectors_va = .;
+        _vectors_pa = LOADADDR(.vectors);
         /*
             KEEP is required as no symbols inside the section are directly referenced and thus
             --gc-sections yeets the entire vector table

@@ -40,29 +40,42 @@ _start:
     str x2, [x0, x1, lsl #3]
 
 
+    // 4KiB translation granule
+    //   level -1: IA[51:48] (4-bit)
+    //   level  0: IA[47:39] (9-bit)
+    //   level  1: IA[38:30] (9-bit)
+    //   level  2: IA[29:21] (9-bit)
+    //   level  3: IA[20:12] (9-bit)
+
     // upper VA range, level 0
     ldr x0, =tt_upper_level0
     msr TTBR1_EL1, x0
-    mov x1, #0 // index (TODO: use ubfx and VA)
+
+    ldr x1, =_vectors_va
+    ubfx x1, x1, #39, #9
+
     ldr x2, =tt_upper_level1
     orr x2, x2, #0b11 // D_Table
     str x2, [x0, x1, lsl #3]
 
     // upper VA range, level 1 (index 0)
     ldr x0, =tt_upper_level1
-    mov x1, #0 // index (TODO: use ubfx and VA)
-    mov x2, #0x0000000000000000 // TODO: use VA
+
+    ldr x1, =_vectors_va
+    ubfx x1, x1, #30, #9
+
+    ldr x2, =_vectors_pa
     mov x3, #(0b1 << 10) | (0b01 << 0) // AF | D_Block
     orr x2, x2, x3
     str x2, [x0, x1, lsl #3]
 
     // upper VA range, level 1 (index 1)
-    ldr x0, =tt_upper_level1
-    mov x1, #1 // index (TODO: use ubfx and VA)
-    mov x2, #0x0000000040000000 // TODO: use VA
-    mov x3, #(0b1 << 10) | (0b01 << 0) // AF | D_Block
-    orr x2, x2, x3
-    str x2, [x0, x1, lsl #3]
+    //ldr x0, =tt_upper_level1
+    //mov x1, #1 // index (TODO: use ubfx and VA)
+    //mov x2, #0x0000000040000000 // TODO: use VA
+    //mov x3, #(0b1 << 10) | (0b01 << 0) // AF | D_Block
+    //orr x2, x2, x3
+    //str x2, [x0, x1, lsl #3]
 
     // need to barrier after writing to any translation tables (R[SPVBD]),
     // or the new contents may not be observable by the mmu.
@@ -76,6 +89,7 @@ _start:
 
     mrs x5, SCTLR_EL1
     orr x5, x5, #1              // mmu enable
+.enable_mmu:
     msr SCTLR_EL1, x5
 
     ldr x30, =_estack_va
