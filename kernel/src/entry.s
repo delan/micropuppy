@@ -47,7 +47,7 @@ _start:
     //   level  2: IA[29:21] (9-bit)
     //   level  3: IA[20:12] (9-bit)
 
-    // upper VA range, level 0
+    // upper VA range, level 0 (index 0)
     ldr x0, =tt_upper_level0
     msr TTBR1_EL1, x0
 
@@ -64,8 +64,19 @@ _start:
     ldr x1, =_vectors_va
     ubfx x1, x1, #30, #9
 
+    ldr x2, =tt_upper_level2
+    mov x3, #0b11 // D_Table
+    orr x2, x2, x3
+    str x2, [x0, x1, lsl #3]
+
+    // upper VA range, level 2 (index 0)
+    ldr x0, =tt_upper_level2
+
+    ldr x1, =_vectors_va
+    ubfx x1, x1, #30, #9
+
     ldr x2, =_vectors_pa
-    mov x3, #(0b1 << 10) | (0b01 << 0) // AF | D_Block
+    mov x3, #(1 << 10) | 0b01 // AF | D_Block
     orr x2, x2, x3
     str x2, [x0, x1, lsl #3]
 
@@ -110,6 +121,9 @@ tt_upper_level0:
     .fill 512, 8, 0
 .align 12
 tt_upper_level1:
+    .fill 512, 8, 0
+.align 12
+tt_upper_level2:
     .fill 512, 8, 0
 
 .section ".vectors", "ax"
