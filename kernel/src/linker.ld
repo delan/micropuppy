@@ -65,7 +65,13 @@ SECTIONS {
         . = . + 0x4000;
         TASK2_KERNEL_INITIAL_SP = .;
     } >kernel AT >ram
-    BUDDY_ALLOC_TREE = .;
+    /* TODO move this to rust, so we can calculate the correct space
+       and map more pages if needed */
+    .buddy_alloc_tree ALIGN(4K) (NOLOAD) : {
+        _buddy_alloc_tree_va = .;
+        _buddy_alloc_tree_pa = LOADADDR(.buddy_alloc_tree);
+        . = . + 0x80000; /* 512KiB of space for tree */
+    } >kernel AT >ram
 
     _ekernel_va = .;
 

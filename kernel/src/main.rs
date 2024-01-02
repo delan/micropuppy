@@ -299,11 +299,19 @@ pub extern "C" fn kernel_main() {
     }
 
     extern "C" {
-        static BUDDY_ALLOC_TREE: u8;
+        // FIXME relocation R_AARCH64_ADR_PREL_PG_HI21 out of range:
+        // 281476054814720 is not in [-4294967296, 4294967295]; references '_buddy_alloc_tree_pa'
+        // static _buddy_alloc_tree_pa: u8;
+        // static _kernel_pa: u8;
+        static _buddy_alloc_tree_va: u8;
     }
     let ram = fdt.memory().regions().next().unwrap();
-    let allocator_start = unsafe { &BUDDY_ALLOC_TREE } as *const u8;
-    let allocator_end = unsafe { ram.starting_address.add(ram.size.unwrap()) };
+    let allocator_start = unsafe { &_buddy_alloc_tree_va } as *const u8;
+    let allocator_start_pa = unsafe { allocator_start.sub(0xffff000000000000 - 0x40000000) };
+    let allocator_len = unsafe {
+        ram.size.unwrap() - allocator_start_pa.offset_from(ram.starting_address) as usize
+    };
+    let allocator_end = unsafe { (&_buddy_alloc_tree_va as *const u8).add(allocator_len) };
     unsafe {
         dbg!(ALLOCATOR.get_or_init(|| Allocator::new(allocator_start, allocator_end)));
     }
