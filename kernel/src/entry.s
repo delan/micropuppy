@@ -15,62 +15,54 @@ _start:
     mov w1, #'!'
     mov w2, #'\n'
 
-    // set up an identity-mapped lowest 2GiB (1GiB below ram, 1GiB of ram),
-    // to avoid faulting when the mmu is enabled.
-    ldr x5, =tt_lower_level0
-    msr TTBR0_EL1, x5
-    strb w1, [x0]               // “!”
+    // lower VA range, level 0
+    ldr x0, =tt_lower_level0
+    msr TTBR0_EL1, x0
+    mov x1, #0 // index (TODO: use ubfx and VA)
+    ldr x2, =tt_lower_level1
+    orr x2, x2, #0b11 // D_Table
+    str x2, [x0, x1, lsl #3]
 
-    // table 0GiB (0,x,x,x)+512GiB -> 0GiB (0x0000'0000'0000'0000)
-    ldr x5, =tt_lower_level0
-    add x5, x5, #0x0            // (0,,,)*8
-    ldr x6, =tt_lower_level1
-    orr x6, x6, 0b11            // table; valid
-    str x6, [x5]
+    // lower VA range, level 1 (index 0)
+    ldr x0, =tt_lower_level1
+    mov x1, #0 // index (TODO: use ubfx and VA)
+    mov x2, #0x0000000000000000 // TODO: use VA
+    mov x3, #(0b1 << 10) | (0b01 << 0) // AF | D_Block
+    orr x2, x2, x3
+    str x2, [x0, x1, lsl #3]
 
-    // block 0GiB (0,0,x,x)+1GiB -> 0GiB (0x0000'0000'0000'0000)
-    ldr x5, =tt_lower_level1
-    add x5, x5, #0x0            // (,0,,)*8
-    mov x6, #0x0000000000000000         // 0GiB
-    mov x9, #(0b1 << 10) | (0b01 << 0)  // access flag | block; valid
-    orr x6, x6, x9
-    str x6, [x5]
+    // lower VA range, level 1 (index 1)
+    ldr x0, =tt_lower_level1
+    mov x1, #1 // index (TODO: use ubfx and VA)
+    mov x2, #0x0000000040000000 // TODO: use VA
+    mov x3, #(0b1 << 10) | (0b01 << 0) // AF | D_Block
+    orr x2, x2, x3
+    str x2, [x0, x1, lsl #3]
 
-    // block 1GiB (0,1,x,x)+1GiB -> 1GiB (0x0000'0000'4000'0000)
-    ldr x5, =tt_lower_level1
-    add x5, x5, #0x8            // (,1,,)*8
-    mov x6, #0x0000000040000000         // 1GiB
-    mov x9, #(0b1 << 10) | (0b01 << 0)  // access flag | block; valid
-    orr x6, x6, x9
-    str x6, [x5]
 
-    // kernel side
-    ldr x5, =tt_upper_level0
-    msr TTBR1_EL1, x5
-    strb w1, [x0]               // “!”
+    // upper VA range, level 0
+    ldr x0, =tt_upper_level0
+    msr TTBR1_EL1, x0
+    mov x1, #0 // index (TODO: use ubfx and VA)
+    ldr x2, =tt_upper_level1
+    orr x2, x2, #0b11 // D_Table
+    str x2, [x0, x1, lsl #3]
 
-    // table 0GiB (0,x,x,x)+512GiB -> 0GiB (0x0000'0000'0000'0000)
-    ldr x5, =tt_upper_level0
-    add x5, x5, #0x0            // (0,,,)*8
-    ldr x6, =tt_upper_level1
-    orr x6, x6, 0b11            // table; valid
-    str x6, [x5]
+    // upper VA range, level 1 (index 0)
+    ldr x0, =tt_upper_level1
+    mov x1, #0 // index (TODO: use ubfx and VA)
+    mov x2, #0x0000000000000000 // TODO: use VA
+    mov x3, #(0b1 << 10) | (0b01 << 0) // AF | D_Block
+    orr x2, x2, x3
+    str x2, [x0, x1, lsl #3]
 
-    // block 0GiB (0,0,x,x)+1GiB -> 0GiB (0x0000'0000'0000'0000)
-    ldr x5, =tt_upper_level1
-    add x5, x5, #0x0            // (,0,,)*8
-    mov x6, #0x0000000000000000         // 0GiB
-    mov x9, #(0b1 << 10) | (0b01 << 0)  // access flag | block; valid
-    orr x6, x6, x9
-    str x6, [x5]
-
-    // block 1GiB (0,1,x,x)+1GiB -> 1GiB (0x0000'0000'4000'0000)
-    ldr x5, =tt_upper_level1
-    add x5, x5, #0x8            // (,1,,)*8
-    mov x6, #0x0000000040000000         // 1GiB
-    mov x9, #(0b1 << 10) | (0b01 << 0)  // access flag | block; valid
-    orr x6, x6, x9
-    str x6, [x5]
+    // upper VA range, level 1 (index 1)
+    ldr x0, =tt_upper_level1
+    mov x1, #1 // index (TODO: use ubfx and VA)
+    mov x2, #0x0000000040000000 // TODO: use VA
+    mov x3, #(0b1 << 10) | (0b01 << 0) // AF | D_Block
+    orr x2, x2, x3
+    str x2, [x0, x1, lsl #3]
 
     // need to barrier after writing to any translation tables (R[SPVBD]),
     // or the new contents may not be observable by the mmu.
@@ -81,13 +73,10 @@ _start:
     mrs x5, TCR_EL1
     ldr x5, =((16 << 16) | (16 << 0))   // T1SZ = 16, T0SZ = 16
     msr TCR_EL1, x5
-    strb w1, [x0]               // “!”
 
     mrs x5, SCTLR_EL1
     orr x5, x5, #1              // mmu enable
     msr SCTLR_EL1, x5
-    strb w1, [x0]               // “!”
-    strb w2, [x0]               // “\n”
 
     ldr x30, =_estack_va
     mov sp, x30
