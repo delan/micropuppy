@@ -81,6 +81,17 @@ _start:
     orr x2, x2, x3
     str x2, [x0, x1, lsl #3]
 
+    // upper VA range, level 3 (index 1)
+    ldr x0, =tt_upper_level3
+    ldr x1, =_vectors_va
+    add x1, x1, #0x1000
+    ubfx x1, x1, #12, #9
+    ldr x2, =_vectors_pa
+    add x2, x2, #0x1000
+    mov x3, #(1 << 10) | 0b11 // AF | D_Page
+    orr x2, x2, x3
+    str x2, [x0, x1, lsl #3]
+
     // upper VA range, level 1 (index 1)
     //ldr x0, =tt_upper_level1
     //mov x1, #1 // index (TODO: use ubfx and VA)
