@@ -24,3 +24,4 @@ macro_rules! impl_for {
 impl_for!(u8);
 impl_for!(u16);
 impl_for!(u32);
+impl_for!(u64);

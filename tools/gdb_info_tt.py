@@ -87,7 +87,11 @@ def info_tt(inferior, address, level):
     # TODO be smarter than this, or maybe even be dumber (always 0xFFFF...)?
     starting_va = 0xFFFF_FFFF_FFFF_FFFF if address == "$TTBR1_EL1" else 0
     address = gdb.parse_and_eval(address)
-    print(table_str_from_inferior(inferior, int(address), int(level), starting_va))
+    print(
+        table_str_from_inferior(
+            inferior, int(address) & ((1 << 64) - 1), int(level), starting_va
+        )
+    )
 
 
 def table_str_from_inferior(inferior, address, level, starting_va):

@@ -87,6 +87,25 @@ _start:
     cmp x1, x5
     blt .populate_level3
 
+    // === populate physical mapping ===
+    // level 0: D_Table pointing to level 1
+    ldr x0, =tt_upper_level0
+    ldr x1, =PHYS_BASE
+    mov x7, #0x40000000 // 1 GiB
+    add x1, x1, x7
+    ldr x2, =tt_upper_level1_phys
+    ubfx x3, x1, #39, #9 // IA[47:39]
+    orr x4, x2, #0b11 // D_Table
+    str x4, [x0, x3, lsl #3]
+
+    // level 1: D_Block for physical memory
+    mov x0, x2
+    ldr x2, =0x40000000
+    ubfx x3, x1, #30, #9 // IA[38:30]
+    mov x6, #(1 << 10) | 0b01 // AF | D_Block
+    orr x4, x2, x6
+    str x4, [x0, x3, lsl #3]
+
     // need to barrier after writing to any translation tables (R[SPVBD]),
     // or the new contents may not be observable by the mmu.
     dsb sy
@@ -126,6 +145,9 @@ tt_upper_level2:
     .fill 512, 8, 0
 .align 12
 tt_upper_level3:
+    .fill 512, 8, 0
+.align 12
+tt_upper_level1_phys:
     .fill 512, 8, 0
 
 .section ".vectors", "ax"

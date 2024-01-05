@@ -1,7 +1,8 @@
 ENTRY(_start)
 
 RAM_BASE = 0x40000000;
-KERNEL_BASE = 0xffff000000000000;
+PHYS_BASE = 0xffff000000000000;
+KERNEL_BASE = 0xffff800000000000;
 
 MEMORY {
     /* intentionally offset from the start of RAM: space required for FDT */
@@ -11,7 +12,7 @@ MEMORY {
         higher half kernel: when TCR_EL1.T1SZ = 16, this entire region is translated by TTBR1_EL1
         since IA[55] = 1
     */
-    kernel (rwxa) : ORIGIN = KERNEL_BASE, LENGTH = 1024M
+    kernel (rwxa) : ORIGIN = KERNEL_BASE, LENGTH = 8192M
 }
 
 SECTIONS {
@@ -20,8 +21,6 @@ SECTIONS {
         _start_pa = LOADADDR(.start);
         *(.start*)
     } >ram
-
-    /* . = ALIGN(4K); */
 
     /*
         the vector table is 16 entries of 0x80 bytes each; VBAR_ELn bits 10:0 are RES0, which

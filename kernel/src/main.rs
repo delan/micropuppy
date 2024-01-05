@@ -33,6 +33,7 @@ mod reg;
 mod scheduler;
 mod sync;
 mod task;
+mod tt;
 
 use core::arch::{asm, global_asm};
 use core::fmt::Write;
@@ -46,6 +47,7 @@ use task::Context;
 use crate::gicv2::InterruptId;
 use crate::logging::Pl011Writer;
 use crate::sync::OnceCell;
+use crate::tt::{PageBox, TranslationTable};
 
 global_asm!(include_str!("entry.s"), options(raw));
 
@@ -257,6 +259,22 @@ pub extern "C" fn kernel_main() {
     let uart0 = uart0.reg().unwrap().next().unwrap();
     let uart0 = Pl011Writer::new(uart0.starting_address);
     logging::init(uart0, log::LevelFilter::Trace);
+
+    let (_stext_va, _etext_va) = (0, 0);
+    let _stext_pa = 0;
+    let (_sdata_va, _edata_va) = (0, 0);
+    let _sdata_pa = 0;
+    let (_srodata_va, _erodata_va) = (0, 0);
+    let _srodata_pa = 0;
+    let (_sbss_va, _ebss_va) = (0, 0);
+    let _sbss_pa = 0;
+
+    let mut tt = PageBox::new(TranslationTable::new());
+    log::debug!("tt at {:x?}", tt.pa);
+    tt.map_contiguous(_stext_va, _etext_va, _stext_pa, "rx");
+    tt.map_contiguous(_sdata_va, _edata_va, _sdata_pa, "rw");
+    tt.map_contiguous(_srodata_va, _erodata_va, _srodata_pa, "r");
+    tt.map_contiguous(_sbss_va, _ebss_va, _sbss_pa, "rw");
 
     log::error!("error woof");
     log::warn!("warn woof");
