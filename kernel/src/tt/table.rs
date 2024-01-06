@@ -44,6 +44,7 @@ impl<L> TranslationTable<L> {
             let descriptor = build(&mut DescriptorBuilder::default()).into();
             let bits = descriptor.into_inner();
 
+            // TODO: ordering
             self.descriptors[index].store(bits, Ordering::SeqCst);
 
             unsafe { DescriptorRefMut::from_bits_unchecked(bits) }

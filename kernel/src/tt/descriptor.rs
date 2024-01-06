@@ -25,10 +25,6 @@ impl<L> Descriptor<L> {
             None
         }
     }
-
-    pub fn into_inner(self) -> u64 {
-        self.bits
-    }
 }
 
 impl<L, Ty> Descriptor<L, Ty> {
@@ -38,11 +34,19 @@ impl<L, Ty> Descriptor<L, Ty> {
             phantom: PhantomData,
         }
     }
+
+    pub fn into_inner(self) -> u64 {
+        let bits = self.bits;
+
+        core::mem::forget(self);
+
+        bits
+    }
 }
 
 impl<L, Ty> Drop for Descriptor<L, Ty> {
     fn drop(&mut self) {
-        // todo!("drop for descriptor")
+        todo!("drop for descriptor")
     }
 }
 
@@ -107,7 +111,7 @@ type TableDescriptor<L> = Descriptor<L, Table>;
 
 impl<L: IntermediateLevel> From<TableDescriptor<L>> for Descriptor<L> {
     fn from(value: TableDescriptor<L>) -> Self {
-        unsafe { Descriptor::from_bits_unchecked(value.bits) }
+        unsafe { Descriptor::from_bits_unchecked(value.into_inner()) }
     }
 }
 
@@ -176,7 +180,7 @@ impl<L: FinalLevel> DescriptorBuilder<L> {
 
 impl<L: FinalLevel> From<PageDescriptor<L>> for Descriptor<L> {
     fn from(value: PageDescriptor<L>) -> Self {
-        unsafe { Descriptor::from_bits_unchecked(value.bits) }
+        unsafe { Descriptor::from_bits_unchecked(value.into_inner()) }
     }
 }
 
