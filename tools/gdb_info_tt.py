@@ -21,7 +21,8 @@ class InfoTtCommand(gdb.Command):
     """
 
     def __init__(self):
-        super().__init__("info tt", gdb.COMMAND_STATUS)
+        # COMMAND_STATUS too, if someday gdb supports multiple classes
+        super().__init__("info tt", gdb.COMMAND_USER)
 
     def invoke(self, argument, from_tty):
         inferior = gdb.inferiors()[0]
@@ -43,7 +44,8 @@ class InfoTtCommand(gdb.Command):
 
 class InfoTtAlias(gdb.Command):
     def __init__(self, name, address):
-        super().__init__(f"info {name}", gdb.COMMAND_STATUS)
+        # COMMAND_STATUS too, if someday gdb supports multiple classes
+        super().__init__(f"info {name}", gdb.COMMAND_USER)
         self.address = address
 
     def invoke(self, argument, from_tty):

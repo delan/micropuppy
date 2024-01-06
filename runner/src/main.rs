@@ -33,6 +33,9 @@ enum RunnerCommand {
     /// Build the kernel binary, then run the kernel in QEMU.
     Qemu {
         /// Should QEMU open a GDB server?
+        ///
+        /// Connect GDB with “target remote localhost:1234”, or consider
+        /// running QEMU inside GDB with “qemu run”.
         #[arg(long, short)]
         debugger: bool,
     },

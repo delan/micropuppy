@@ -47,7 +47,7 @@ atexit.register(lambda: qemu.terminate(interactive=False))
 
 class QemuCommand(gdb.Command):
     def __init__(self):
-        super().__init__("qemu", gdb.COMMAND_RUNNING, gdb.COMPLETE_NONE, prefix=True)
+        super().__init__("qemu", gdb.COMMAND_NONE, gdb.COMPLETE_NONE, prefix=True)
 
     def invoke(self, argument, from_tty):
         print("subcommands: run, terminate")
@@ -55,7 +55,8 @@ class QemuCommand(gdb.Command):
 
 class QemuRunCommand(gdb.Command):
     def __init__(self):
-        super().__init__("qemu run", gdb.COMMAND_RUNNING)
+        # COMMAND_RUNNING too, if someday gdb supports multiple classes
+        super().__init__("qemu run", gdb.COMMAND_USER)
 
     def invoke(self, argument, from_tty):
         qemu.run()
@@ -65,7 +66,8 @@ class QemuRunCommand(gdb.Command):
 
 class QemuTerminateCommand(gdb.Command):
     def __init__(self):
-        super().__init__("qemu terminate", gdb.COMMAND_RUNNING)
+        # COMMAND_RUNNING too, if someday gdb supports multiple classes
+        super().__init__("qemu terminate", gdb.COMMAND_USER)
 
     def invoke(self, argument, from_tty):
         qemu.detach()
