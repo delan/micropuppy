@@ -5,7 +5,7 @@ CARGOFLAGS_TARGET = -Zbuild-std --target ../aarch64-unknown-none.json
 
 .PHONY: internal
 internal:
-	@>&2 echo 'use ./run, not make!'
+	@>&2 echo 'use cargo xtask, not make!'
 	@exit 1
 
 .PHONY: build

@@ -20,7 +20,9 @@ class Qemu:
             # process_group=0 prevents qemu from receiving ^C (intended to break into the target)
             # and exiting
             self.process = subprocess.Popen(
-                ["./run", "qemu", "-d"], stdin=subprocess.DEVNULL, process_group=0
+                ["cargo", "xtask", "qemu", "-d"],
+                stdin=subprocess.DEVNULL,
+                process_group=0,
             )
             print("qemu started")
         elif interactive:
