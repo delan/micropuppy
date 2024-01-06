@@ -44,7 +44,7 @@ SECTIONS {
 
     /* sp must be aligned to 16 bytes at a public interface or when used to access memory */
     .stack ALIGN(16) (NOLOAD) : {
-        . = . + 0x4000;
+        . = . + 0x8000;
         _estack_pa = LOADADDR(.stack) + SIZEOF(.stack);
         _estack_va = .;
     } >kernel AT >ram

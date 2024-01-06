@@ -47,7 +47,10 @@ use task::Context;
 use crate::gicv2::InterruptId;
 use crate::logging::Pl011Writer;
 use crate::sync::OnceCell;
-use crate::tt::{PageBox, TranslationTable};
+use crate::tt::page::PageBox;
+use crate::tt::table::TranslationTable;
+use crate::tt::Level0;
+// use crate::tt::{PageBox, TranslationTable};
 
 global_asm!(include_str!("entry.s"), options(raw));
 
@@ -269,12 +272,15 @@ pub extern "C" fn kernel_main() {
     let (_sbss_va, _ebss_va) = (0, 0);
     let _sbss_pa = 0;
 
-    let mut tt = PageBox::new(TranslationTable::new());
-    log::debug!("tt at {:x?}", tt.pa);
+    // TODO: PageBox
+    let mut tt = PageBox::new(TranslationTable::<Level0>::new());
+    log::debug!("tt pagebox {:x?}", tt);
+    log::debug!("tt {:x?}", *tt);
     tt.map_contiguous(_stext_va, _etext_va, _stext_pa, "rx");
     tt.map_contiguous(_sdata_va, _edata_va, _sdata_pa, "rw");
     tt.map_contiguous(_srodata_va, _erodata_va, _srodata_pa, "r");
     tt.map_contiguous(_sbss_va, _ebss_va, _sbss_pa, "rw");
+    log::debug!("tt {:x?}", *tt);
 
     log::error!("error woof");
     log::warn!("warn woof");
