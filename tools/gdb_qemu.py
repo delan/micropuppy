@@ -46,11 +46,13 @@ atexit.register(lambda: qemu.terminate(interactive=False))
 
 
 class QemuCommand(gdb.Command):
+    """Prefix command for invoking QEMU."""
+
     def __init__(self):
         super().__init__("qemu", gdb.COMMAND_NONE, gdb.COMPLETE_NONE, prefix=True)
 
     def invoke(self, argument, from_tty):
-        print("subcommands: run, terminate")
+        gdb.execute("help qemu")
 
 
 class QemuRunCommand(gdb.Command):
