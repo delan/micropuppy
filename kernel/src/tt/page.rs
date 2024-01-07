@@ -86,6 +86,10 @@ impl<T> PageBox<T> {
         Self(pa)
     }
 
+    pub fn addr(&self) -> PhysicalAddress<T> {
+        self.0
+    }
+
     pub fn leak(self) -> PhysicalAddress<T> {
         self.0
     }

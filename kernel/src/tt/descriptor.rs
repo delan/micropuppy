@@ -172,7 +172,7 @@ type PageDescriptor<L> = Descriptor<L, Page>;
 impl<L: FinalLevel> DescriptorBuilder<L> {
     pub fn page(&mut self, pa: usize) -> PageDescriptor<L> {
         // TODO: verify PA alignment and size, attributes
-        let bits = pa | 0b11;
+        let bits = pa | (1 << 10) | 0b11;
 
         unsafe { PageDescriptor::from_bits_unchecked(bits as u64) }
     }

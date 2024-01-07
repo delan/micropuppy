@@ -263,24 +263,29 @@ pub extern "C" fn kernel_main() {
     let uart0 = Pl011Writer::new(uart0.starting_address);
     logging::init(uart0, log::LevelFilter::Trace);
 
-    let (_stext_va, _etext_va) = (0, 0);
-    let _stext_pa = 0;
-    let (_sdata_va, _edata_va) = (0, 0);
-    let _sdata_pa = 0;
-    let (_srodata_va, _erodata_va) = (0, 0);
-    let _srodata_pa = 0;
-    let (_sbss_va, _ebss_va) = (0, 0);
-    let _sbss_pa = 0;
+    extern "C" {
+        static _kernel_va: u8;
+        static _kernel_pa: u8;
+        static _ekernel_va: u8;
+    }
 
     // TODO: PageBox
     let mut tt = PageBox::new(TranslationTable::<Level0>::new());
-    log::debug!("tt pagebox {:x?}", tt);
-    log::debug!("tt {:x?}", *tt);
-    tt.map_contiguous(_stext_va, _etext_va, _stext_pa, "rx");
-    tt.map_contiguous(_sdata_va, _edata_va, _sdata_pa, "rw");
-    tt.map_contiguous(_srodata_va, _erodata_va, _srodata_pa, "r");
-    tt.map_contiguous(_sbss_va, _ebss_va, _sbss_pa, "rw");
-    log::debug!("tt {:x?}", *tt);
+
+    // annoying: relocation fails (out of range) when we try and use the PA like we do the VAs below
+    let pa: usize;
+    unsafe { asm!("ldr {}, =_kernel_pa", out(reg) pa) };
+
+    tt.map_contiguous(
+        unsafe { &_kernel_va } as *const _ as usize,
+        unsafe { &_ekernel_va } as *const _ as usize,
+        pa,
+        "rx",
+    );
+
+    unsafe {
+        asm!("msr TTBR1_EL1, {:x}", "dsb sy", in(reg) tt.addr().addr());
+    }
 
     log::error!("error woof");
     log::warn!("warn woof");

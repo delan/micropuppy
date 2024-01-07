@@ -69,9 +69,13 @@ impl<L> TranslationTable<L> {
 
 impl TranslationTable<Level0> {
     pub fn map_contiguous(&mut self, va_start: usize, va_end: usize, pa_start: usize, flags: &str) {
-        // for each page in the range {
-        self.map_page(va_start, pa_start, flags);
-        // }
+        let mut va = va_start;
+        let mut pa = pa_start;
+        while va < va_end {
+            self.map_page(va, pa, flags);
+            va += 0x1000;
+            pa += 0x1000;
+        }
     }
 
     /// Creates a mapping between `virtual_address` and the `physical_address`.
@@ -117,7 +121,7 @@ impl TranslationTable<Level0> {
             level3.replace(level3_index, |builder| builder.page(physical_address));
 
         // TODO: drop old_level3_descriptor correctly
-        log::debug!("old_level3_descriptor = {:?}", old_level3_descriptor);
+        // log::debug!("old_level3_descriptor = {:?}", old_level3_descriptor);
         core::mem::forget(old_level3_descriptor);
     }
 }
