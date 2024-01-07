@@ -31,7 +31,7 @@ impl<L> TranslationTable<L> {
     /// otherwise, uses `build` to create a new descriptor which is stored at `index` and returned.
     fn get_mut_or_set<'tt, B, D>(&'tt mut self, index: usize, build: B) -> DescriptorRefMut<'tt, L>
     where
-        B: FnOnce(&mut DescriptorBuilder<L>) -> D,
+        B: FnOnce(DescriptorBuilder<L>) -> D,
         D: Into<Descriptor<L>>,
     {
         // TODO: ordering
@@ -41,7 +41,7 @@ impl<L> TranslationTable<L> {
         if let Some(descriptor) = descriptor {
             descriptor
         } else {
-            let descriptor = build(&mut DescriptorBuilder::default()).into();
+            let descriptor = build(DescriptorBuilder::default()).into();
             let bits = descriptor.into_inner();
 
             // TODO: ordering
@@ -55,10 +55,10 @@ impl<L> TranslationTable<L> {
     /// descriptor if it was valid.
     fn replace<F, D>(&mut self, index: usize, build: F) -> Option<Descriptor<L>>
     where
-        F: FnOnce(&mut DescriptorBuilder<L>) -> D,
+        F: FnOnce(DescriptorBuilder<L>) -> D,
         D: Into<Descriptor<L>>,
     {
-        let descriptor = build(&mut DescriptorBuilder::default()).into();
+        let descriptor = build(DescriptorBuilder::default()).into();
         let new_bits = descriptor.into_inner();
 
         let old_bits = self.descriptors[index].swap(new_bits, Ordering::SeqCst);
@@ -93,7 +93,7 @@ impl TranslationTable<Level0> {
         let level3_index = (virtual_address >> 12) & MASK;
 
         let mut level0_descriptor = self.get_mut_or_set(level0_index, |builder| {
-            builder.table(PageBox::new(TranslationTable::new()))
+            builder.table(PageBox::new(TranslationTable::new())).build()
         });
 
         let level1 = level0_descriptor
@@ -102,7 +102,7 @@ impl TranslationTable<Level0> {
             .translation_table_mut();
 
         let mut level1_descriptor = level1.get_mut_or_set(level1_index, |builder| {
-            builder.table(PageBox::new(TranslationTable::new()))
+            builder.table(PageBox::new(TranslationTable::new())).build()
         });
 
         let level2 = level1_descriptor
@@ -110,15 +110,16 @@ impl TranslationTable<Level0> {
             .expect("level 1 descriptor should be a table descriptor")
             .translation_table_mut();
         let mut level2_descriptor = level2.get_mut_or_set(level2_index, |builder| {
-            builder.table(PageBox::new(TranslationTable::new()))
+            builder.table(PageBox::new(TranslationTable::new())).build()
         });
 
         let level3 = level2_descriptor
             .table_mut()
             .expect("level 2 descriptor should be a table descriptor")
             .translation_table_mut();
-        let old_level3_descriptor =
-            level3.replace(level3_index, |builder| builder.page(physical_address));
+        let old_level3_descriptor = level3.replace(level3_index, |builder| {
+            builder.page(physical_address).access_flag(true).build()
+        });
 
         // TODO: drop old_level3_descriptor correctly
         // log::debug!("old_level3_descriptor = {:?}", old_level3_descriptor);
